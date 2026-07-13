@@ -409,6 +409,26 @@ input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 }
 .detail-delete-btn:hover { background: #fdeae9; }
 
+.detail-cover {
+  position: relative; width: 100%; height: 200px;
+  border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 20px;
+}
+.detail-cover__img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  opacity: 0; transition: opacity var(--dur-normal) var(--ease-standard);
+}
+.detail-cover__img[data-loaded="true"] { opacity: 1; }
+.detail-cover__skeleton {
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, var(--surface-hover) 25%, var(--surface-subtle) 37%, var(--surface-hover) 63%);
+  background-size: 200% 100%;
+  animation: mnShimmer 1.4s linear infinite;
+}
+@keyframes mnShimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
 .detail-title {
   width: 100%; border: none; outline: none; background: transparent;
   font-size: 34px; font-weight: 700; color: var(--text-strong);
