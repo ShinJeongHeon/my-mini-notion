@@ -42,6 +42,9 @@ desktop.ini
 # claude code personal overrides (team settings live in .claude/settings.json)
 .claude/settings.local.json
 
+# local git worktrees managed by claude code — never commit working copies
+.claude/worktrees/
+
 # agent skills cache — reproducible from skills-lock.json (npx skills)
 /.agents/
 
