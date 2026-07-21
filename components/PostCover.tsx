@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 
-const COVER_ENDPOINT = "https://cataas.com/cat/cute";
+const COVER_ENDPOINT =
+  process.env.NEXT_PUBLIC_COVER_IMAGE_URL ?? "https://cataas.com/cat/cute";
 
 function cacheBustToken() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);

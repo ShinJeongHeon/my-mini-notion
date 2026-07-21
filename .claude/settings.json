@@ -1,5 +1,32 @@
 {
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit|Write|NotebookEdit|Bash|PowerShell|Glob|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/block-env-access.js\"",
+            "timeout": 10,
+            "statusMessage": "Checking env file access..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/env-example-sync.js\"",
+            "timeout": 30,
+            "statusMessage": "Syncing .env.example..."
+          }
+        ]
+      }
+    ]
   }
 }

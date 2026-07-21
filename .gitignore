@@ -22,7 +22,28 @@
 
 # misc
 .DS_Store
+Thumbs.db
+desktop.ini
 *.pem
+
+# editor personal settings
+.vscode/
+.idea/
+
+# caches & logs
+.eslintcache
+*.log
+
+# secrets & certificates (never commit key material)
+*.key
+*.p12
+*.pfx
+
+# claude code personal overrides (team settings live in .claude/settings.json)
+.claude/settings.local.json
+
+# agent skills cache — reproducible from skills-lock.json (npx skills)
+/.agents/
 
 # debug
 npm-debug.log*
@@ -32,6 +53,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the generated variable contract, which holds no real values
+!.env.example
 
 # vercel
 .vercel
