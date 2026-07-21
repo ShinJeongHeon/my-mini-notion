@@ -1,0 +1,4 @@
+# .env.example is rewritten by .claude/hooks/env-example-sync.js with LF endings.
+# Check it out as LF too, so the hook's byte comparison matches and git never
+# reports a phantom line-ending-only modification on Windows (core.autocrlf=true).
+.env.example text eol=lf
