@@ -1,7 +1,4 @@
 {
-  "enabledPlugins": {
-    "superpowers@claude-plugins-official": true
-  },
   "hooks": {
     "PreToolUse": [
       {
@@ -28,5 +25,9 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "superpowers@superpowers-marketplace": true
   }
 }
