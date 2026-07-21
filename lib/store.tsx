@@ -7,6 +7,8 @@ import {
   useEffect,
   useState,
 } from "react";
+import type { AuthError, User } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 
 export type Post = {
   id: string;
@@ -18,7 +20,24 @@ export type Post = {
 
 const KEY = "mini-notion-v1";
 const OWNER_NAME = "김민수";
-const EMAIL = "minsu.kim@gmail.com";
+
+// Profile fields surfaced from the signed-in Google account.
+type Account = {
+  id: string;
+  email: string;
+  name: string | null;
+  avatarUrl: string | null;
+};
+
+function toAccount(user: User): Account {
+  const meta = user.user_metadata ?? {};
+  return {
+    id: user.id,
+    email: user.email ?? "",
+    name: meta.full_name ?? meta.name ?? null,
+    avatarUrl: meta.avatar_url ?? meta.picture ?? null,
+  };
+}
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -77,23 +96,29 @@ export function formatDate(ts: number): string {
 }
 
 type AppState = {
+  dataLoaded: boolean;
+  authLoaded: boolean;
+  posts: Post[];
+  nickname: string | null;
+  avatar: string | null;
+  account: Account | null;
+};
+
+type AppStore = {
   loaded: boolean;
   loggedIn: boolean;
   posts: Post[];
   nickname: string | null;
   avatar: string | null;
-};
-
-type AppStore = AppState & {
   displayName: string;
   email: string;
-  login(): void;
+  login(): Promise<AuthError | null>;
   logout(): void;
   createPost(title: string): Post;
   updatePost(id: string, patch: Partial<Pick<Post, "title" | "content">>): void;
   toggleFavorite(id: string): void;
   deletePost(id: string): void;
-  saveNickname(nick: string): void;
+  saveNickname(nick: string): Promise<boolean>;
   setAvatar(dataUrl: string): void;
 };
 
@@ -101,11 +126,12 @@ const AppContext = createContext<AppStore | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>({
-    loaded: false,
-    loggedIn: false,
+    dataLoaded: false,
+    authLoaded: false,
     posts: [],
     nickname: null,
     avatar: null,
+    account: null,
   });
 
   // Load once from localStorage; seed sample posts on first visit.
@@ -113,7 +139,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let posts: Post[] = [];
     let nickname: string | null = null;
     let avatar: string | null = null;
-    let loggedIn = false;
     try {
       const raw = localStorage.getItem(KEY);
       if (raw) {
@@ -121,19 +146,62 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         posts = Array.isArray(d.posts) ? d.posts : [];
         nickname = d.nickname || null;
         avatar = d.avatar || null;
-        loggedIn = !!d.loggedIn;
       } else {
         posts = seed();
       }
     } catch {
       posts = seed();
     }
-    setState({ loaded: true, loggedIn, posts, nickname, avatar });
+    setState((s) => ({ ...s, dataLoaded: true, posts, nickname, avatar }));
   }, []);
+
+  // Pull the 1:1 profile row and use its name as the nickname. The DB trigger
+  // (on_auth_user_created) creates the row on first login; the insert here only
+  // covers accounts that signed up before the trigger existed.
+  const syncProfile = useCallback(async (user: User) => {
+    let { data } = await supabase
+      .from("profile")
+      .select("name")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!data) {
+      const { data: created } = await supabase
+        .from("profile")
+        .insert({ user_id: user.id, name: toAccount(user).name })
+        .select("name")
+        .maybeSingle();
+      data = created;
+    }
+    if (data) {
+      const name = data.name ?? null;
+      setState((s) => ({ ...s, nickname: name }));
+    }
+  }, []);
+
+  // Mirror the Supabase session (INITIAL_SESSION covers the first load,
+  // including the OAuth code exchange when returning from Google).
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      const user = session?.user ?? null;
+      setState((s) => ({
+        ...s,
+        authLoaded: true,
+        account: user ? toAccount(user) : null,
+      }));
+      // Supabase calls inside this callback can deadlock the auth lock,
+      // so defer the profile fetch to the next tick.
+      if (user && (event === "INITIAL_SESSION" || event === "SIGNED_IN")) {
+        setTimeout(() => void syncProfile(user), 0);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [syncProfile]);
 
   // Persist on every change after initial load.
   useEffect(() => {
-    if (!state.loaded) return;
+    if (!state.dataLoaded) return;
     try {
       localStorage.setItem(
         KEY,
@@ -141,20 +209,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           posts: state.posts,
           nickname: state.nickname,
           avatar: state.avatar,
-          loggedIn: state.loggedIn,
         })
       );
     } catch {}
   }, [state]);
 
-  const login = useCallback(
-    () => setState((s) => ({ ...s, loggedIn: true })),
-    []
-  );
-  const logout = useCallback(
-    () => setState((s) => ({ ...s, loggedIn: false })),
-    []
-  );
+  const login = useCallback(async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin + "/" },
+    });
+    return error;
+  }, []);
+  const logout = useCallback(() => {
+    void supabase.auth.signOut();
+  }, []);
 
   const createPost = useCallback((title: string): Post => {
     const post: Post = {
@@ -191,18 +260,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, posts: s.posts.filter((p) => p.id !== id) }));
   }, []);
 
-  const saveNickname = useCallback((nick: string) => {
-    setState((s) => ({ ...s, nickname: (nick || "").trim() || null }));
-  }, []);
+  // Update local state immediately, then persist to the profile table.
+  // Resolves false when the Supabase update fails.
+  const userId = state.account?.id;
+  const saveNickname = useCallback(
+    async (nick: string) => {
+      const name = (nick || "").trim() || null;
+      setState((s) => ({ ...s, nickname: name }));
+      if (!userId) return true;
+      const { error } = await supabase
+        .from("profile")
+        .update({ name })
+        .eq("user_id", userId);
+      return !error;
+    },
+    [userId]
+  );
 
   const setAvatar = useCallback((dataUrl: string) => {
     setState((s) => ({ ...s, avatar: dataUrl }));
   }, []);
 
   const store: AppStore = {
-    ...state,
-    displayName: state.nickname || OWNER_NAME,
-    email: EMAIL,
+    loaded: state.dataLoaded && state.authLoaded,
+    loggedIn: !!state.account,
+    posts: state.posts,
+    nickname: state.nickname,
+    avatar: state.avatar ?? state.account?.avatarUrl ?? null,
+    displayName: state.nickname || state.account?.name || OWNER_NAME,
+    email: state.account?.email ?? "",
     login,
     logout,
     createPost,

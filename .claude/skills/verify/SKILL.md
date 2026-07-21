@@ -5,8 +5,10 @@ description: Drive mini-notion (Next.js App Router) in a real browser to verify 
 
 # Verify: mini-notion
 
-Single Next.js app, no backend. State lives entirely in `localStorage`
-(key `mini-notion-v1`) via `AppProvider` (`lib/store.tsx`).
+Single Next.js app. Posts/nickname/avatar live in `localStorage`
+(key `mini-notion-v1`) via `AppProvider` (`lib/store.tsx`); **auth is
+real Google OAuth via Supabase** (`lib/supabase.ts`, session managed
+by supabase-js in its own localStorage keys).
 
 ## Launch
 
@@ -15,8 +17,11 @@ npm install        # first run only
 npm run dev         # Turbopack, http://localhost:3000, ready in <1s
 ```
 
-No `.env` needed. Kill with `pkill -f "next dev"` (or
-`lsof -ti:3000 | xargs kill -9`) when done — nothing else binds :3000.
+Requires `.env.local` with `NEXT_PUBLIC_SUPABASE_URL` and
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (present locally but
+gitignored via `.env*`; publishable key is safe to expose). Kill with
+`pkill -f "next dev"` (or `lsof -ti:3000 | xargs kill -9`) when done —
+nothing else binds :3000.
 
 ## Get a browser
 
@@ -35,20 +40,38 @@ Then `require("playwright")` from a script in that scratch dir.
 `npx playwright install chromium` also works but is slower and warns
 about missing project deps (harmless, ignore the warning).
 
-## Bypass login
+## Auth (real Google OAuth — no localStorage bypass)
 
-The app has a fake Google login gate. Skip it by seeding
-`localStorage` directly before navigating to an authenticated route:
+Login is real Supabase Google OAuth. The old
+`{ loggedIn: true }` localStorage seed **no longer works** — the
+guard derives `loggedIn` from the Supabase session
+(`onAuthStateChange`).
+
+What a fresh automated browser CAN verify without credentials:
+signed-out guard (`/` → `/login`), the login card, and that the
+Google button navigates to `accounts.google.com` with no OAuth
+config error (`redirect_uri_mismatch`, `invalid_client`, …).
+Never type real Google credentials from automation.
+
+To drive authenticated flows, either:
+- sign in once manually in a **headed** persistent context
+  (`chromium.launchPersistentContext(dir, { headless: false })`) and
+  reuse that profile dir in later runs, or
+- seed posts only (same JSON, minus `loggedIn`) and test
+  `/posts/[id]` etc. after signing in, or
+- rely on the vitest suite (`__tests__/auth-store.test.tsx`), which
+  mocks `@/lib/supabase` for session-derived state.
+
+Seeding posts still works (posts remain in localStorage):
 
 ```js
 await page.goto("http://localhost:3000/login"); // establishes origin
 await page.evaluate(() => {
   localStorage.setItem("mini-notion-v1", JSON.stringify({
     posts: [{ id: "verify-post-1", title: "t", content: "c", favorite: false, createdAt: Date.now() }],
-    nickname: null, avatar: null, loggedIn: true,
+    nickname: null, avatar: null,
   }));
 });
-await page.goto("http://localhost:3000/posts/verify-post-1");
 ```
 
 ## Flows worth driving

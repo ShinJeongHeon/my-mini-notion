@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "@/lib/store";
 
@@ -30,15 +30,19 @@ function GoogleLogo() {
 export default function LoginPage() {
   const app = useApp();
   const router = useRouter();
+  const [pending, setPending] = useState(false);
 
   // Already signed in → straight to the workspace.
   useEffect(() => {
     if (app.loaded && app.loggedIn) router.replace("/");
   }, [app.loaded, app.loggedIn, router]);
 
-  const handleLogin = () => {
-    app.login();
-    router.push("/");
+  // Starts the Google OAuth redirect; on success the browser leaves the page.
+  const handleLogin = async () => {
+    if (pending) return;
+    setPending(true);
+    const error = await app.login();
+    if (error) setPending(false);
   };
 
   return (
@@ -51,7 +55,12 @@ export default function LoginPage() {
           <br />
           구글 계정으로 바로 시작하세요.
         </p>
-        <button type="button" className="login-google-btn" onClick={handleLogin}>
+        <button
+          type="button"
+          className="login-google-btn"
+          onClick={handleLogin}
+          disabled={pending}
+        >
           <GoogleLogo />
           Google 계정으로 계속하기
         </button>

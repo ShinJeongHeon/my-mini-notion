@@ -25,8 +25,12 @@ export default function MyPage() {
     };
   }, []);
 
-  const saveProfile = () => {
-    app.saveNickname(nickDraft);
+  const saveProfile = async () => {
+    const ok = await app.saveNickname(nickDraft);
+    if (!ok) {
+      window.alert("저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
     setSaved(true);
     if (savedTimer.current) clearTimeout(savedTimer.current);
     savedTimer.current = setTimeout(() => setSaved(false), 1800);
