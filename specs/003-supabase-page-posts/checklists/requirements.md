@@ -32,3 +32,5 @@
 ## Notes
 
 - 모든 항목 통과 (2026-07-21). `/speckit-plan` 진행 가능.
+- 본문의 "Google 로그인" 언급(Key Entities·Assumptions)은 범위 외로 유지되는 기존 인증
+  기능에 대한 참조 기록으로 허용(신규 구현 상세 지정이 아님).

@@ -34,4 +34,3 @@
 - 접힘 방식(전체 숨김 vs 아이콘 레일), 상태 저장 범위(기기 로컬), 모바일 범위 제외 등
   해석이 갈릴 수 있는 지점은 모두 Assumptions 섹션에 기본값으로 문서화했다 —
   [NEEDS CLARIFICATION] 없이 계획 단계로 진행 가능.
-- Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`

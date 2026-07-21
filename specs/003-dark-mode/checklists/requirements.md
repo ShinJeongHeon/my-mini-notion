@@ -33,4 +33,3 @@
 
 - 전 항목 통과 (2026-07-21 검증). `DESIGN.md` 언급은 저장소 규칙에 따른 의존성
   기록으로, 구현 방식 지정이 아니므로 허용.
-- Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
