@@ -12,7 +12,7 @@
 ## 1. 단위 테스트 (TDD 게이트)
 
 ```bash
-npm test                          # 전체 — 기존 22개 + 신규 테마 테스트 전부 통과, 에러·경고 0
+npm test                          # 전체 — 기존 스위트와 신규 테마 테스트 전부 통과, 에러·경고 0
 npm test -- __tests__/theme.test.tsx        # 해석 로직·초기화 스크립트·훅
 npm test -- __tests__/theme-toggle.test.tsx # 사이드바 토글 버튼
 ```
@@ -51,9 +51,9 @@ npm run dev   # http://localhost:3000
 
 ## 5. 접근성 검증 (SC-004)
 
-- 다크 상태에서 4개 화면 + 로그인(`/login`, 로그아웃 후) 순회, DevTools
-  Lighthouse(또는 CSS Overview → Colors)로 대비 이슈 0건 확인 —
-  기준값은 contracts §5 표.
+- 다크 상태에서 spec SC-004의 화면·상태 목록을 순회(로그인 화면은 로그아웃 후
+  `/login`), DevTools Lighthouse(또는 CSS Overview → Colors)로 대비 이슈 0건
+  확인 — 기준값은 contracts §5 표.
 
 ## 6. 저장 차단 엣지 케이스
 
@@ -64,6 +64,9 @@ npm run dev   # http://localhost:3000
 
 ## 자동 브라우저 검증
 
-`verify` 스킬(`.claude/skills/verify/SKILL.md`)의 Playwright 절차를 따르되,
-로그인 없이도 위 2·3·4는 `/login` 화면에서 동일하게 검증 가능하다
-(테마는 로그인 화면에도 적용 — FR-002).
+`verify` 스킬(`.claude/skills/verify/SKILL.md`)의 Playwright 절차를 따른다.
+로그인 없이 `/login` 화면에서 검증 가능한 것은 §4의 시스템 따름(테마는 로그인
+화면에도 적용 — FR-002 후단·FR-005)과, DevTools로
+`localStorage["mini-notion-theme"]`를 미리 심은 뒤 확인하는 §3의
+no-FOUC·지속성이다. §2의 토글 시나리오는 토글이 사이드바에만 있으므로
+로그인 후 화면에서 실행한다.

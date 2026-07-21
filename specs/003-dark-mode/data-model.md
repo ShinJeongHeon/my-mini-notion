@@ -36,9 +36,9 @@ resolveTheme(stored, systemDark):
 
 ### 검증 규칙
 
-- 읽기: `"light"`/`"dark"` 외 모든 값(오타·구버전·null)은 미설정으로 취급.
-- 쓰기/읽기 모두 try/catch — 저장소 차단 시 조용히 무시하고 세션 내
-  토글은 DOM 속성만으로 동작(spec Edge Case).
+저장 프로토콜(키·허용값·무효 정규화·try/catch 폴백)의 정본은
+`contracts/theme-contract.md` §2다. 요약: 두 허용값 외에는 전부 미설정 취급,
+접근 실패는 조용히 무시하고 세션 내 토글은 DOM 속성만으로 동작(spec Edge Case).
 
 ### 다른 데이터와의 관계
 
@@ -46,3 +46,6 @@ resolveTheme(stored, systemDark):
   스키마·로드 사이클을 공유하지 않는다(research.md §4).
 - Supabase(`profile` 테이블)에 저장하지 않는다 — 계정 간 동기화는 범위 외
   (spec Assumptions).
+- 이 엔티티의 저장 접근 패턴이 spec Assumptions의 공유 "기기 로컬 UI 선호값"
+  메커니즘이다 — `003-sidebar-collapse`는 `lib/theme.ts`의 제네릭 접근자
+  `readLocalPref`/`writeLocalPref`(계약 §4)를 재사용한다.

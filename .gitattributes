@@ -1,4 +1,5 @@
-# .env.example is rewritten by .claude/hooks/env-example-sync.js with LF endings.
-# Check it out as LF too, so the hook's byte comparison matches and git never
-# reports a phantom line-ending-only modification on Windows (core.autocrlf=true).
-.env.example text eol=lf
+# Normalize every text file to LF, repo-wide. core.autocrlf=true on Windows was
+# producing phantom line-ending-only diffs (first seen on .env.example, whose
+# rewriter hook .claude/hooks/env-example-sync.js writes LF and byte-compares;
+# the same class hit other files). text=auto leaves binaries untouched.
+* text=auto eol=lf

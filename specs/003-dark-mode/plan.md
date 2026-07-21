@@ -22,7 +22,7 @@
 
 **Primary Dependencies**: 기존 의존성만 사용 — `lucide-react`(Moon/Sun 아이콘). 신규 패키지 없음(next-themes 등 도입하지 않음, research.md §1)
 
-**Storage**: `localStorage` 키 `mini-notion-theme` (`"light" | "dark"`, 부재 = 시스템 따름). 기존 `mini-notion-v1` 스키마는 건드리지 않음 (data-model.md)
+**Storage**: `localStorage` 전용 키 (계약: contracts/theme-contract.md §2). 기존 `mini-notion-v1` 스키마는 건드리지 않음 (data-model.md)
 
 **Testing**: Vitest 4 + React Testing Library + jsdom (`npm test`). matchMedia는 jsdom 미지원 이벤트만 최소 모킹 (research.md §6)
 
@@ -32,9 +32,9 @@
 
 **Performance Goals**: 토글 후 1초 이내 전체 반영(SC-002 — 실제로는 CSS 변수 재해석으로 즉시), 로드 시 반대 테마 플래시 0회(FR-007)
 
-**Constraints**: 다크모드 텍스트/UI 대비 WCAG AA — 일반 텍스트 4.5:1, 큰 텍스트·UI 구성요소 3:1 (FR-008); 저장 차단 환경에서도 세션 내 토글 동작(Edge Case)
+**Constraints**: 다크모드 텍스트/UI 대비 WCAG AA 충족(기준 수치는 FR-008); 저장 차단 환경에서도 세션 내 토글 동작(Edge Case)
 
-**Scale/Scope**: 화면 4개(목록·상세·마이·로그인) + 앱 셸. 시맨틱 토큰 약 30개 오버라이드 + 하드코딩 색 6곳 토큰화. 신규 컴포넌트 1개(사이드바 토글), 신규 모듈 1개(`lib/theme.ts`)
+**Scale/Scope**: 앱의 모든 화면(spec SC-004의 화면·상태 목록) + 앱 셸. 시맨틱 토큰 오버라이드(표: contracts §5) + 하드코딩 색 토큰화(정본 목록: contracts §6). 신규 컴포넌트 1개(사이드바 토글), 신규 모듈 1개(`lib/theme.ts`)
 
 ## Constitution Check
 
@@ -44,7 +44,7 @@
 |---|---|---|
 | I | Test-First (TDD) | ✅ PASS — 테마 해석 로직·토글 컴포넌트·no-FOUC 스크립트를 실패 테스트부터 작성. CSS 토큰 값 자체는 "설정"에 준해 테스트 대상 아님(E2E는 quickstart.md로 검증). tasks 단계에서 각 태스크에 RED→GREEN 순서 명시 |
 | II | 테스트 무결성 (모킹 규율) | ✅ PASS — 단언 대상은 실제 DOM(`document.documentElement.dataset.theme`)과 실제 `localStorage`(jsdom 내장). 모킹은 jsdom이 구현하지 않는 `matchMedia` 변경 이벤트 1곳뿐이며 실제 API 형태 전체를 반영 (research.md §6) |
-| III | 디자인 시스템 준수 | ✅ PASS — `DESIGN.md` 전체(§1 토큰 72개, §3 사이드바, §7 "다크모드 미구현" TODO) 선행 확인 완료. 새 디자인 결정(다크 토큰 값, 신규 시맨틱 토큰 4개, 토글 배치)은 구현과 동시에 `DESIGN.md`에 반영 (contracts/theme-contract.md가 초안) |
+| III | 디자인 시스템 준수 | ✅ PASS — `DESIGN.md` 전체(§1 토큰, §3 사이드바, §7 "다크모드 미구현" TODO) 선행 확인 완료. 새 디자인 결정(다크 토큰 값, 신규 시맨틱 토큰 4개, 토글 배치)은 구현과 동시에 `DESIGN.md`에 반영 (contracts/theme-contract.md가 초안) |
 | IV | 프레임워크 문서 우선 | ✅ PASS — 번들 문서 확인 완료: `01-app/03-api-reference/02-components/script.md`(beforeInteractive는 하이드레이션을 막지 않음 → 인라인 script 태그 채택 근거), `04-functions/generate-viewport.md`(`themeColor` media 배열). 세부는 research.md §2 |
 | V | 단순성 (YAGNI) | ✅ PASS — 신규 의존성 0, 테마 2종만, "시스템 따름" UI 미노출, Provider/Context 없이 훅 1개, 기존 프리미티브(SidebarItem 패턴) 재사용 |
 
@@ -75,7 +75,7 @@ specs/003-dark-mode/
 
 ```text
 app/
-├── globals.css          # [수정] 다크 토큰 오버라이드 블록 + 하드코딩 색 6곳 토큰화
+├── globals.css          # [수정] 다크 토큰 오버라이드 블록 + 하드코딩 색 토큰화(contracts §6)
 ├── layout.tsx           # [수정] no-FOUC 인라인 스크립트 + <html suppressHydrationWarning>
 └── (기타 화면 파일)      # 변경 없음 — 토큰만으로 전환
 
@@ -84,7 +84,7 @@ components/
 └── ui/                  # 변경 없음 (SidebarItem 스타일 패턴 재사용)
 
 lib/
-└── theme.ts             # [신규] THEME_STORAGE_KEY·resolveTheme·useTheme 훅·THEME_INIT_SCRIPT
+└── theme.ts             # [신규] 테마 모듈 (exports: contracts/theme-contract.md §4)
 
 __tests__/
 ├── theme.test.tsx       # [신규] 해석 로직·초기화 스크립트·훅 동작 (TDD)
