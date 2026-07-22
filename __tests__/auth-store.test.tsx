@@ -32,7 +32,7 @@ vi.mock("@/lib/supabase", () => ({
       signInWithOAuth: mocks.signInWithOAuth,
       signOut: mocks.signOut,
     },
-    from: () => ({
+    from: (table: string) => ({
       select: () => ({
         eq: (_col: string, id: string) => ({
           maybeSingle: async () => {
@@ -57,6 +57,14 @@ vi.mock("@/lib/supabase", () => ({
           return { error: null };
         },
       }),
+      // page 목록 로드는 이 테스트의 관심사가 아니므로 빈 목록을 돌려준다.
+      ...(table === "page"
+        ? {
+            select: () => ({
+              order: async () => ({ data: [], error: null }),
+            }),
+          }
+        : null),
     }),
   },
 }));

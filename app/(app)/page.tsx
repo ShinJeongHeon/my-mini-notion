@@ -23,8 +23,9 @@ export default function ListPage() {
 
   const showSlash = query.trim().startsWith("/");
 
-  const createPage = (title: string) => {
-    const post = app.createPost(title);
+  const createPage = async (title: string) => {
+    const post = await app.createPost(title);
+    if (!post) return; // 실패·비로그인 — postsError 안내가 표시된다 (FR-001/008)
     setQuery("");
     router.push(`/posts/${post.id}`);
   };
@@ -39,11 +40,11 @@ export default function ListPage() {
     const q = query.trim();
     if (!q) return;
     if (q.toLowerCase().startsWith("/page")) {
-      createPage(q.slice(5).trim());
+      void createPage(q.slice(5).trim());
       return;
     }
     if (q.startsWith("/")) return; // unknown command, wait
-    createPage(q);
+    void createPage(q);
   };
 
   return (
@@ -64,7 +65,11 @@ export default function ListPage() {
             onKeyDown={onQueryKey}
             placeholder="/page 를 입력하거나 할 일을 적어보세요"
           />
-          <Button variant="primary" iconLeft={Plus} onClick={() => createPage("")}>
+          <Button
+            variant="primary"
+            iconLeft={Plus}
+            onClick={() => void createPage("")}
+          >
             새 페이지
           </Button>
         </div>
@@ -75,7 +80,7 @@ export default function ListPage() {
             <button
               type="button"
               className="slash-menu__item"
-              onClick={() => createPage("")}
+              onClick={() => void createPage("")}
             >
               <span className="slash-menu__tile">
                 <FileText size={18} />
@@ -95,6 +100,11 @@ export default function ListPage() {
       <p className="composer-hint">
         노션처럼 <b>/page</b> 를 입력하고 Enter를 누르면 새 글이 만들어져요.
       </p>
+      {app.postsError && (
+        <p className="error-note" role="alert">
+          {app.postsError}
+        </p>
+      )}
 
       {app.posts.length > 0 ? (
         <>
