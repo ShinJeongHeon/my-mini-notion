@@ -136,6 +136,23 @@ describe("US1: 사이드바 접기/펼치기 토글", () => {
     expect(expandBtn.getAttribute("aria-expanded")).toBe("false");
   });
 
+  test("토글 시 포커스가 상대 버튼으로 이동한다 (키보드 사용자가 body로 떨어지지 않음)", async () => {
+    renderShell();
+    await screen.findByPlaceholderText(SEARCH_PLACEHOLDER);
+
+    const collapseBtn = screen.getByRole("button", { name: "사이드바 접기" });
+    collapseBtn.focus();
+    fireEvent.click(collapseBtn);
+
+    const expandBtn = screen.getByRole("button", { name: "사이드바 펼치기" });
+    expect(document.activeElement).toBe(expandBtn);
+
+    fireEvent.click(expandBtn);
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "사이드바 접기" })
+    );
+  });
+
   test("연속 3연타 — 최종 상태가 클릭 횟수에 수렴한다 (접힘)", async () => {
     renderShell();
     await screen.findByPlaceholderText(SEARCH_PLACEHOLDER);

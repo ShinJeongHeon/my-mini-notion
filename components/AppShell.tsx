@@ -45,13 +45,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   const creatingRef = useRef(false);
+  const collapseBtnRef = useRef<HTMLButtonElement>(null);
+  const expandBtnRef = useRef<HTMLButtonElement>(null);
+  // 토글 버튼은 반대 상태에서 언마운트된다 — 포커스가 body로 떨어지지 않게
+  // 사용자가 토글했을 때만 상대 버튼으로 포커스를 옮긴다(초기 복원 시엔 안 함).
+  const focusAfterToggleRef = useRef(false);
 
-  const toggleSidebar = () =>
+  const toggleSidebar = () => {
+    focusAfterToggleRef.current = true;
     setCollapsed((c) => {
       const next = !c;
       writeLocalPref(SIDEBAR_PREF_KEY, next ? "collapsed" : "expanded");
       return next;
     });
+  };
+
+  useEffect(() => {
+    if (!focusAfterToggleRef.current) return;
+    focusAfterToggleRef.current = false;
+    (collapsed ? expandBtnRef : collapseBtnRef).current?.focus();
+  }, [collapsed]);
 
   // Client-side auth guard: bounce to /login when signed out.
   useEffect(() => {
@@ -107,21 +120,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {collapsed && (
           <div className="sidebar-expand">
             <IconButton
+              ref={expandBtnRef}
               icon={PanelLeftOpen}
               title="사이드바 펼치기"
               aria-expanded={false}
+              aria-controls="app-sidebar"
               onClick={toggleSidebar}
             />
           </div>
         )}
         {!collapsed && (
-        <nav className="sidebar">
+        <nav id="app-sidebar" className="sidebar">
           <div className="sidebar__inner">
             <div className="sidebar__header">
               <IconButton
+                ref={collapseBtnRef}
                 icon={PanelLeftClose}
                 title="사이드바 접기"
                 aria-expanded
+                aria-controls="app-sidebar"
                 onClick={toggleSidebar}
               />
             </div>

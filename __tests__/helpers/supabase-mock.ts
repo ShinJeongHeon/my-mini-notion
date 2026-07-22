@@ -32,6 +32,10 @@ export const state = {
   deleteError: null as SupaError,
   profileRow: null as null | ProfileRow,
   profileUpdateError: null as SupaError,
+  // upsert 경합 시뮬레이션 — 세팅하면 upsert 시점에 "다른 탭이 먼저 만든 행"이
+  // 존재하는 상황이 되어 DO NOTHING(반환 행 없음)으로 응답한다.
+  profileUpsertConflictRow: null as null | ProfileRow,
+  storageUploadError: null as SupaError,
   insertSeq: 0,
   // 타이밍 제어용 게이트 — 세팅하면 해당 요청이 이 promise를 기다린다.
   // 레이스(생성 vs 초기 조회, 로그아웃 중 in-flight 저장) 테스트에 사용.
@@ -46,8 +50,10 @@ export const spies = {
   pageUpdate: vi.fn(),
   pageDelete: vi.fn(),
   profileSelect: vi.fn(),
-  profileInsert: vi.fn(),
+  profileUpsert: vi.fn(),
   profileUpdate: vi.fn(),
+  storageUpload: vi.fn(),
+  storageRemove: vi.fn(),
   signInWithOAuth: vi.fn(),
   signOut: vi.fn(),
 };
@@ -62,6 +68,8 @@ export function resetSupabaseMock() {
   state.deleteError = null;
   state.profileRow = { name: null, image_path: null, introduction: null };
   state.profileUpdateError = null;
+  state.profileUpsertConflictRow = null;
+  state.storageUploadError = null;
   state.insertSeq = 0;
   state.selectGate = null;
   state.insertGate = null;
@@ -125,10 +133,20 @@ function profileTable() {
         },
       }),
     }),
-    insert: (row: { user_id: string; name: string | null }) => ({
+    // ON CONFLICT DO NOTHING(ignoreDuplicates) 의미론: 이미 행이 있으면
+    // 아무것도 만들지 않고 반환 행도 없다 — 호출부가 재조회로 승자 행을 읽는다.
+    upsert: (
+      row: { user_id: string; name: string | null },
+      _opts?: { onConflict?: string; ignoreDuplicates?: boolean }
+    ) => ({
       select: () => ({
         maybeSingle: async () => {
-          spies.profileInsert(row);
+          spies.profileUpsert(row);
+          if (state.profileUpsertConflictRow) {
+            state.profileRow = state.profileUpsertConflictRow;
+            return { data: null, error: null };
+          }
+          if (state.profileRow) return { data: null, error: null };
           state.profileRow = {
             name: row.name ?? null,
             image_path: null,
@@ -234,5 +252,21 @@ export const supabase = {
     if (table === "profile") return profileTable();
     if (table === "page") return pageTable();
     throw new Error(`unexpected table: ${table}`);
+  },
+  // 프로필 이미지 업로드(saveAvatar) 경로 — 실제 클라이언트 표면과 동일 형상.
+  storage: {
+    from: (bucket: string) => ({
+      upload: async (path: string, file: unknown, _opts?: unknown) => {
+        spies.storageUpload(bucket, path, file);
+        if (state.storageUploadError) {
+          return { data: null, error: state.storageUploadError };
+        }
+        return { data: { path }, error: null };
+      },
+      remove: async (paths: string[]) => {
+        spies.storageRemove(bucket, paths);
+        return { data: [], error: null };
+      },
+    }),
   },
 };

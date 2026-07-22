@@ -239,21 +239,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Pull the 1:1 profile row and use its name as the nickname. The DB trigger
-  // (on_auth_user_created) creates the row on first login; the insert here only
-  // covers accounts that signed up before the trigger existed.
+  // (on_auth_user_created) creates the row on first login; the upsert here only
+  // covers accounts that signed up before the trigger existed. ignoreDuplicates
+  // (ON CONFLICT DO NOTHING)라서 두 탭이 동시에 최초 로그인해도 안전하다 —
+  // 경합에서 지면 반환 행이 없으므로 재조회로 승자의 행을 읽는다.
   const syncProfile = useCallback(async (user: User) => {
-    let { data } = await supabase
-      .from("profile")
-      .select("name, image_path, introduction")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const selectProfile = () =>
+      supabase
+        .from("profile")
+        .select("name, image_path, introduction")
+        .eq("user_id", user.id)
+        .maybeSingle();
+    let { data } = await selectProfile();
     if (!data) {
       const { data: created } = await supabase
         .from("profile")
-        .insert({ user_id: user.id, name: toAccount(user).name })
+        .upsert(
+          { user_id: user.id, name: toAccount(user).name },
+          { onConflict: "user_id", ignoreDuplicates: true }
+        )
         .select("name, image_path, introduction")
         .maybeSingle();
-      data = created;
+      data = created ?? (await selectProfile()).data;
     }
     if (data && userIdRef.current === user.id) {
       const name = data.name ?? null;
