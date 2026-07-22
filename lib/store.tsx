@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import type { AuthError, User } from "@supabase/supabase-js";
@@ -19,6 +20,8 @@ export type Post = {
 };
 
 const KEY = "mini-notion-v1";
+// 제목·본문 자동 저장 디바운스 (research.md R5 — last-write-wins).
+const SAVE_DEBOUNCE_MS = 600;
 const OWNER_NAME = "김민수";
 const PROFILE_IMAGE_BUCKET = "profile-image";
 
@@ -47,47 +50,42 @@ function toAccount(user: User): Account {
   };
 }
 
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+// public.page 실측 row 형상 (specs/003-supabase-page-posts/data-model.md §1.1).
+type PageRow = {
+  id: string;
+  created_at: string;
+  title: string | null;
+  content: string | null;
+  user_id: string;
+};
+
+function rowToPost(row: PageRow, favorites: Set<string>): Post {
+  return {
+    id: row.id,
+    title: row.title ?? "",
+    content: row.content ?? "",
+    favorite: favorites.has(row.id),
+    createdAt: Date.parse(row.created_at),
+  };
 }
 
-function seed(): Post[] {
-  const now = Date.now();
-  const H = 3600e3;
-  const D = 24 * H;
-  return [
-    {
-      id: uid(),
-      title: "이번 주 할 일 정리",
-      content:
-        "- 디자인 시안 마무리\n- 개발 일정 공유\n- 회의록 정리해서 팀에 전달\n- 다음 스프린트 백로그 다듬기",
-      favorite: true,
-      createdAt: now - 2 * D,
-    },
-    {
-      id: uid(),
-      title: "회의 준비 메모",
-      content:
-        "다음 주 킥오프 미팅 안건\n\n1. 이번 분기 목표 정렬\n2. 역할과 담당 분담\n3. 마일스톤과 일정 확정",
-      favorite: false,
-      createdAt: now - 1 * D,
-    },
-    {
-      id: uid(),
-      title: "아이디어 노트",
-      content:
-        "개인 생산성 도구에 추가하면 좋을 기능들을 떠오를 때마다 적어두는 공간. 태그, 검색, 할 일 체크박스 등.",
-      favorite: false,
-      createdAt: now - 4 * H,
-    },
-    {
-      id: uid(),
-      title: "읽을거리 모음",
-      content: "",
-      favorite: false,
-      createdAt: now - 40 * 60e3,
-    },
-  ];
+// 즐겨찾기 표시는 기기(브라우저)별 보관이며 계정 키로 격리된다 (FR-010).
+const FAV_PREFIX = "mini-notion-fav:";
+
+function readFavorites(userId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(FAV_PREFIX + userId);
+    const ids = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(ids) ? ids : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeFavorites(userId: string, favorites: Set<string>) {
+  try {
+    localStorage.setItem(FAV_PREFIX + userId, JSON.stringify([...favorites]));
+  } catch {}
 }
 
 export function formatDate(ts: number): string {
@@ -106,7 +104,9 @@ export function formatDate(ts: number): string {
 type AppState = {
   dataLoaded: boolean;
   authLoaded: boolean;
+  postsLoaded: boolean;
   posts: Post[];
+  postsError: string | null;
   nickname: string | null;
   imagePath: string | null;
   account: Account | null;
@@ -116,13 +116,14 @@ type AppStore = {
   loaded: boolean;
   loggedIn: boolean;
   posts: Post[];
+  postsError: string | null;
   nickname: string | null;
   avatar: string | null;
   displayName: string;
   email: string;
   login(): Promise<AuthError | null>;
   logout(): void;
-  createPost(title: string): Post;
+  createPost(title: string): Promise<Post | null>;
   updatePost(id: string, patch: Partial<Pick<Post, "title" | "content">>): void;
   toggleFavorite(id: string): void;
   deletePost(id: string): void;
@@ -136,31 +137,58 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>({
     dataLoaded: false,
     authLoaded: false,
+    postsLoaded: false,
     posts: [],
+    postsError: null,
     nickname: null,
     imagePath: null,
     account: null,
   });
 
-  // Load once from localStorage; seed sample posts on first visit.
+  // 계정 소유 글 전체를 page 테이블에서 가져온다 (RLS가 소유자 격리를 강제).
+  // 실패하면 null — 호출부가 기존 화면 상태를 유지한다.
+  const fetchPosts = useCallback(async (ownerId: string) => {
+    const { data, error } = await supabase
+      .from("page")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) return null;
+    const favorites = readFavorites(ownerId);
+    return ((data ?? []) as PageRow[]).map((row) => rowToPost(row, favorites));
+  }, []);
+
+  const loadPosts = useCallback(
+    async (ownerId: string) => {
+      const posts = await fetchPosts(ownerId);
+      setState((s) => ({ ...s, postsLoaded: true, ...(posts ? { posts } : {}) }));
+    },
+    [fetchPosts]
+  );
+
+  // 쓰기 실패 시: 실패 안내를 띄우고 서버를 진실의 원천으로 재동기화한다 (FR-008).
+  const resyncAfterError = useCallback(
+    async (ownerId: string, message: string) => {
+      setState((s) => ({ ...s, postsError: message }));
+      const posts = await fetchPosts(ownerId);
+      if (posts) setState((s) => ({ ...s, posts }));
+    },
+    [fetchPosts]
+  );
+
+  // Load the local profile fallback (nickname/imagePath) once. Posts live in
+  // the page table only (FR-002) — no localStorage posts, no sample seeding.
   useEffect(() => {
-    let posts: Post[] = [];
     let nickname: string | null = null;
     let imagePath: string | null = null;
     try {
       const raw = localStorage.getItem(KEY);
       if (raw) {
         const d = JSON.parse(raw);
-        posts = Array.isArray(d.posts) ? d.posts : [];
         nickname = d.nickname || null;
         imagePath = d.imagePath || null;
-      } else {
-        posts = seed();
       }
-    } catch {
-      posts = seed();
-    }
-    setState((s) => ({ ...s, dataLoaded: true, posts, nickname, imagePath }));
+    } catch {}
+    setState((s) => ({ ...s, dataLoaded: true, nickname, imagePath }));
   }, []);
 
   // Pull the 1:1 profile row and use its name as the nickname. The DB trigger
@@ -194,34 +222,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       const user = session?.user ?? null;
+      if (!user) {
+        // 로그아웃 — 대기 중인 자동 저장은 더 이상 이 계정의 것이 아니므로 취소.
+        saveTimerRef.current.forEach((timer) => clearTimeout(timer));
+        saveTimerRef.current.clear();
+        pendingPatchRef.current.clear();
+      }
       setState((s) => ({
         ...s,
         authLoaded: true,
         account: user ? toAccount(user) : null,
+        // 비로그인 상태에서는 어떤 글도 남기지 않는다 (FR-003).
+        ...(user ? {} : { postsLoaded: true, posts: [] }),
       }));
       // Supabase calls inside this callback can deadlock the auth lock,
       // so defer the profile fetch to the next tick.
       if (user && (event === "INITIAL_SESSION" || event === "SIGNED_IN")) {
-        setTimeout(() => void syncProfile(user), 0);
+        setTimeout(() => {
+          void syncProfile(user);
+          void loadPosts(user.id);
+        }, 0);
       }
     });
     return () => subscription.unsubscribe();
-  }, [syncProfile]);
+  }, [syncProfile, loadPosts]);
 
-  // Persist on every change after initial load.
+  // Persist the local profile fallback on change (posts are never stored here).
   useEffect(() => {
     if (!state.dataLoaded) return;
     try {
       localStorage.setItem(
         KEY,
         JSON.stringify({
-          posts: state.posts,
           nickname: state.nickname,
           imagePath: state.imagePath,
         })
       );
     } catch {}
   }, [state]);
+
+  const userId = state.account?.id;
 
   const login = useCallback(async () => {
     const { error } = await supabase.auth.signInWithOAuth({
@@ -234,17 +274,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     void supabase.auth.signOut();
   }, []);
 
-  const createPost = useCallback((title: string): Post => {
-    const post: Post = {
-      id: uid(),
-      title: (title || "").trim(),
-      content: "",
-      favorite: false,
-      createdAt: Date.now(),
-    };
-    setState((s) => ({ ...s, posts: [post, ...s.posts] }));
-    return post;
-  }, []);
+  // 글별 대기 patch·타이머 — 입력은 즉시 화면에, 저장은 디바운스로.
+  const pendingPatchRef = useRef(
+    new Map<string, Partial<Pick<Post, "title" | "content">>>()
+  );
+  const saveTimerRef = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>()
+  );
 
   const updatePost = useCallback(
     (id: string, patch: Partial<Pick<Post, "title" | "content">>) => {
@@ -252,26 +288,106 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...s,
         posts: s.posts.map((p) => (p.id === id ? { ...p, ...patch } : p)),
       }));
+      if (!userId) return;
+      const ownerId = userId;
+      pendingPatchRef.current.set(id, {
+        ...pendingPatchRef.current.get(id),
+        ...patch,
+      });
+      const timer = saveTimerRef.current.get(id);
+      if (timer) clearTimeout(timer);
+      saveTimerRef.current.set(
+        id,
+        setTimeout(() => {
+          saveTimerRef.current.delete(id);
+          const pending = pendingPatchRef.current.get(id);
+          pendingPatchRef.current.delete(id);
+          if (!pending) return;
+          void (async () => {
+            const { error } = await supabase
+              .from("page")
+              .update(pending)
+              .eq("id", id);
+            if (error) {
+              void resyncAfterError(
+                ownerId,
+                "변경 내용을 저장하지 못했어요. 네트워크를 확인해 주세요."
+              );
+            }
+          })();
+        }, SAVE_DEBOUNCE_MS)
+      );
     },
-    []
+    [userId, resyncAfterError]
   );
 
-  const toggleFavorite = useCallback((id: string) => {
-    setState((s) => ({
-      ...s,
-      posts: s.posts.map((p) =>
-        p.id === id ? { ...p, favorite: !p.favorite } : p
-      ),
-    }));
-  }, []);
+  const toggleFavorite = useCallback(
+    (id: string) => {
+      if (!userId) return;
+      const favorites = readFavorites(userId);
+      if (favorites.has(id)) favorites.delete(id);
+      else favorites.add(id);
+      writeFavorites(userId, favorites);
+      setState((s) => ({
+        ...s,
+        posts: s.posts.map((p) =>
+          p.id === id ? { ...p, favorite: favorites.has(id) } : p
+        ),
+      }));
+    },
+    [userId]
+  );
 
-  const deletePost = useCallback((id: string) => {
-    setState((s) => ({ ...s, posts: s.posts.filter((p) => p.id !== id) }));
-  }, []);
+  // 낙관적으로 목록에서 제거하고 실패하면 재동기화한다. 타인 글은 RLS가
+  // 0 rows로 무시하므로 소유자 검증은 서버가 담당한다 (US3-2).
+  const deletePost = useCallback(
+    (id: string) => {
+      if (!userId) return;
+      setState((s) => ({ ...s, posts: s.posts.filter((p) => p.id !== id) }));
+      void (async () => {
+        const { error } = await supabase.from("page").delete().eq("id", id);
+        if (error) {
+          void resyncAfterError(
+            userId,
+            "글을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요."
+          );
+        }
+      })();
+    },
+    [userId, resyncAfterError]
+  );
 
+  // 로그인 사용자만 등록 가능(FR-001). id·created_at은 서버 기본값이 발급하므로
+  // insert 응답 row를 받아 목록에 반영한다.
+  const createPost = useCallback(
+    async (title: string): Promise<Post | null> => {
+      if (!userId) {
+        setState((s) => ({
+          ...s,
+          postsError: "로그인 후 글을 만들 수 있어요.",
+        }));
+        return null;
+      }
+      const { data, error } = await supabase
+        .from("page")
+        .insert({ title: (title || "").trim(), content: "", user_id: userId })
+        .select()
+        .single();
+      if (error || !data) {
+        setState((s) => ({
+          ...s,
+          postsError: "글을 등록하지 못했어요. 잠시 후 다시 시도해 주세요.",
+        }));
+        return null;
+      }
+      const post = rowToPost(data as PageRow, readFavorites(userId));
+      setState((s) => ({ ...s, posts: [post, ...s.posts], postsError: null }));
+      return post;
+    },
+    [userId]
+  );
   // Update local state immediately, then persist to the profile table.
   // Resolves false when the Supabase update fails.
-  const userId = state.account?.id;
   const saveNickname = useCallback(
     async (nick: string) => {
       const name = (nick || "").trim() || null;
@@ -317,9 +433,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const store: AppStore = {
-    loaded: state.dataLoaded && state.authLoaded,
+    loaded: state.dataLoaded && state.authLoaded && state.postsLoaded,
     loggedIn: !!state.account,
     posts: state.posts,
+    postsError: state.postsError,
     nickname: state.nickname,
     avatar: profileImageUrl(state.imagePath) ?? state.account?.avatarUrl ?? null,
     displayName: state.nickname || state.account?.name || OWNER_NAME,

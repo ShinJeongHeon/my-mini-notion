@@ -496,6 +496,12 @@ input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
   font-size: 13px; font-weight: 600; color: var(--status-success);
   animation: mnPop 0.14s var(--ease-out);
 }
+.error-note {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 13px; font-weight: 600; color: var(--status-danger);
+  animation: mnPop 0.14s var(--ease-out);
+}
+.empty-state__action { margin-top: 16px; }
 
 .logout-card {
   display: flex; align-items: center; gap: 14px; margin-top: 16px;

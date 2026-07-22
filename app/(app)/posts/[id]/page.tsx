@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Calendar, ChevronRight, Star, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Calendar,
+  ChevronRight,
+  FileQuestion,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { formatDate, useApp } from "@/lib/store";
+import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
 import { PostCover } from "@/components/PostCover";
 
@@ -14,12 +21,27 @@ export default function PostDetailPage() {
 
   const post = app.posts.find((p) => p.id === id);
 
-  // Deleted or unknown post → back to the list.
-  useEffect(() => {
-    if (app.loaded && !post) router.replace("/");
-  }, [app.loaded, post, router]);
+  if (!app.loaded) return null;
 
-  if (!post) return null;
+  // 삭제되었거나 볼 수 없는 글 — RLS 덕에 타인 글도 "없음"으로만 관측된다 (US2-2).
+  if (!post) {
+    return (
+      <div className="detail-page">
+        <div className="empty-state">
+          <span className="empty-state__tile">
+            <FileQuestion size={40} />
+          </span>
+          <div className="empty-state__title">글을 찾을 수 없어요</div>
+          <div className="empty-state__desc">
+            삭제되었거나 볼 수 없는 글이에요.
+          </div>
+          <div className="empty-state__action">
+            <Button onClick={() => router.push("/")}>목록으로 돌아가기</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleDelete = () => {
     if (window.confirm("이 글을 삭제할까요? 삭제하면 되돌릴 수 없어요.")) {
@@ -80,7 +102,13 @@ export default function PostDetailPage() {
         <Calendar size={14} />
         <span>{formatDate(post.createdAt)} 작성</span>
         <span className="detail-meta__dot" />
-        <span>자동 저장됨</span>
+        {app.postsError ? (
+          <span className="error-note" role="alert">
+            {app.postsError}
+          </span>
+        ) : (
+          <span>자동 저장됨</span>
+        )}
       </div>
       <textarea
         className="detail-content"

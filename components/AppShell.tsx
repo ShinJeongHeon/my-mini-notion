@@ -43,8 +43,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )
     : app.posts;
 
-  const newPage = () => {
-    const post = app.createPost("");
+  const newPage = async () => {
+    const post = await app.createPost("");
+    if (!post) return; // 실패 안내는 postsError로 노출된다 (FR-008)
     router.push(`/posts/${post.id}`);
   };
 
@@ -90,7 +91,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <SidebarSection
                 label="내 글"
                 count={app.posts.length}
-                actions={[{ icon: Plus, title: "새 페이지", onClick: newPage }]}
+                actions={[
+                  { icon: Plus, title: "새 페이지", onClick: () => void newPage() },
+                ]}
               >
                 {navPosts.map((post) => (
                   <SidebarItem
