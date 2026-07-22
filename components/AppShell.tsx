@@ -12,6 +12,8 @@ import {
   LayoutGrid,
   Menu,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Settings,
@@ -21,10 +23,14 @@ import {
 } from "lucide-react";
 import { useApp } from "@/lib/store";
 import { useTheme } from "@/lib/theme";
+import { readLocalPref, writeLocalPref } from "@/lib/local-pref";
 import { Avatar } from "@/components/ui/Avatar";
 import { IconButton } from "@/components/ui/IconButton";
 import { SidebarItem } from "@/components/ui/SidebarItem";
 import { SidebarSection } from "@/components/ui/SidebarSection";
+
+const SIDEBAR_PREF_KEY = "mini-notion-sidebar";
+const SIDEBAR_PREF_VALUES = ["collapsed", "expanded"] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const app = useApp();
@@ -33,6 +39,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [search, setSearch] = useState("");
   const { theme, toggle: toggleTheme } = useTheme();
   const themeLabel = theme === "dark" ? "라이트 모드" : "다크 모드";
+  const [collapsed, setCollapsed] = useState(
+    () =>
+      readLocalPref(SIDEBAR_PREF_KEY, SIDEBAR_PREF_VALUES) === "collapsed"
+  );
+
+  const toggleSidebar = () =>
+    setCollapsed((c) => {
+      const next = !c;
+      writeLocalPref(SIDEBAR_PREF_KEY, next ? "collapsed" : "expanded");
+      return next;
+    });
 
   // Client-side auth guard: bounce to /login when signed out.
   useEffect(() => {
@@ -74,8 +91,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <div className="app-body">
+        {collapsed && (
+          <div className="sidebar-expand">
+            <IconButton
+              icon={PanelLeftOpen}
+              title="사이드바 펼치기"
+              ariaExpanded={false}
+              onClick={toggleSidebar}
+            />
+          </div>
+        )}
+        {!collapsed && (
         <nav className="sidebar">
           <div className="sidebar__inner">
+            <div className="sidebar__header">
+              <IconButton
+                icon={PanelLeftClose}
+                title="사이드바 접기"
+                ariaExpanded
+                onClick={toggleSidebar}
+              />
+            </div>
             <SidebarItem
               icon={House}
               label="홈"
@@ -152,6 +188,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Settings size={16} />
           </button>
         </nav>
+        )}
 
         <main className="app-main mn-scroll">{children}</main>
       </div>

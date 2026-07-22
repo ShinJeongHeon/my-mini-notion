@@ -6,6 +6,7 @@
 // 컴포넌트 — SSR 시에도 <head>에 렌더됨)를 통해 THEME_INIT_SCRIPT를 주입한다.
 
 import { useCallback, useEffect, useState } from "react";
+import { readLocalPref, writeLocalPref } from "@/lib/local-pref";
 
 export type Theme = "light" | "dark";
 
@@ -16,22 +17,7 @@ export function resolveTheme(stored: unknown, systemDark: boolean): Theme {
   return systemDark ? "dark" : "light";
 }
 
-export function readLocalPref(key: string, allowed: string[]): string | null {
-  try {
-    const value = window.localStorage.getItem(key);
-    return value !== null && allowed.includes(value) ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-export function writeLocalPref(key: string, value: string): void {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // 저장 차단 환경 — 세션 내 DOM 속성만으로 동작 (contracts §2)
-  }
-}
+export { readLocalPref, writeLocalPref };
 
 // 루트 레이아웃 <head>의 인라인 스크립트 본문 — 첫 페인트 전에 실행되어
 // 반대 테마 플래시(FOUC)를 차단한다 (번들 문서 preventing-flash-before-hydration.md).
@@ -64,6 +50,9 @@ function systemPrefersDark(): boolean {
 
 export function useTheme(): { theme: Theme; toggle: () => void } {
   const [theme, setTheme] = useState<Theme>(() => {
+    // SSR/프리렌더에는 DOM이 없다 — 셸은 어차피 null을 렌더하므로 기본값이면 충분
+    // (번들 문서 preventing-flash-before-hydration.md의 lazy initializer 가드).
+    if (typeof window === "undefined") return "light";
     // DOM 속성이 원본(data-model.md) — 인라인 스크립트가 이미 세팅했다면 채택
     const current = document.documentElement.dataset.theme;
     if (current === "light" || current === "dark") return current;
