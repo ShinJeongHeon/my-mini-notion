@@ -41,6 +41,7 @@
   --text-muted:       var(--gray-500);
   --text-placeholder: var(--gray-400);
   --text-on-accent:   #ffffff;
+  --text-on-inverse:  #ffffff;
   --text-link:        var(--blue-600);
 
   /* Surfaces */
@@ -69,7 +70,12 @@
   --status-success:   var(--green-500);
   --status-warning:   var(--amber-500);
   --status-danger:    var(--red-500);
+  --status-danger-soft: #fdeae9;
   --status-favorite:  var(--gold-500);
+
+  /* Scrollbar */
+  --scrollbar-thumb:       var(--gray-200);
+  --scrollbar-thumb-hover: var(--gray-300);
 
   /* Typography */
   --font-sans: var(--font-pretendard), -apple-system, BlinkMacSystemFont,
@@ -101,6 +107,51 @@
 }
 
 /* ============================================================
+   Dark theme — 시맨틱 토큰 오버라이드 (DESIGN.md §1.8)
+   원시 램프(--gray-* 등)는 불변. 여기 없는 시맨틱 토큰은
+   라이트 값을 그대로 상속한다(--text-on-accent, --accent,
+   --status-success/warning/danger/favorite, --shadow-* 등).
+   ============================================================ */
+html[data-theme="dark"] {
+  /* Text */
+  --text-strong:      #f5f6f7;
+  --text-body:        #e6e7e9;
+  --text-secondary:   #a8adb4;
+  --text-muted:       #9aa0a8;
+  --text-placeholder: #8a8f98;
+  --text-on-inverse:  #191919;
+  --text-link:        #66a9ff;
+
+  /* Surfaces */
+  --surface-page:     #191919;
+  --surface-sidebar:  #191919;
+  --surface-card:     #232323;
+  --surface-subtle:   #202020;
+  --surface-hover:    #2a2a2a;
+  --surface-active:   #333333;
+  --surface-inverse:  #f1f2f3;
+
+  /* Borders */
+  --border-subtle:    #2a2a2a;
+  --border-default:   #333333;
+  --border-strong:    #454545;
+  --border-focus:     #66a9ff;
+
+  /* Accent surfaces */
+  --accent-hover:     #66a9ff;
+  --accent-active:    #3b82d6;
+  --accent-soft:      #1c3252;
+  --accent-soft-fg:   #93bdf8;
+
+  /* Status */
+  --status-danger-soft: #3a201e;
+
+  /* Scrollbar */
+  --scrollbar-thumb:       #3a3a3a;
+  --scrollbar-thumb-hover: #4a4a4a;
+}
+
+/* ============================================================
    Base
    ============================================================ */
 * { box-sizing: border-box; }
@@ -119,10 +170,10 @@ textarea { resize: none; }
 ::selection { background: var(--accent-soft); }
 input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 
-.mn-scroll { scrollbar-width: thin; scrollbar-color: var(--gray-300) transparent; }
+.mn-scroll { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb-hover) transparent; }
 .mn-scroll::-webkit-scrollbar { width: 11px; height: 11px; }
-.mn-scroll::-webkit-scrollbar-thumb { background: var(--gray-200); border-radius: 8px; border: 3px solid var(--surface-page); }
-.mn-scroll::-webkit-scrollbar-thumb:hover { background: var(--gray-300); }
+.mn-scroll::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 8px; border: 3px solid var(--surface-page); }
+.mn-scroll::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 
 @keyframes mnPop { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
 
@@ -160,7 +211,7 @@ input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 /* Badge (neutral / sm) */
 .badge {
   display: inline-flex; align-items: center; height: 18px; padding: 0 7px; flex: none;
-  border-radius: var(--radius-pill); background: var(--gray-100);
+  border-radius: var(--radius-pill); background: var(--surface-hover);
   font-size: 11px; font-weight: 600; color: var(--text-secondary); line-height: 1;
 }
 
@@ -224,7 +275,7 @@ input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 }
 .brand-chip {
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--gray-900); color: #fff; border-radius: 7px; padding: 3px 8px;
+  background: var(--surface-inverse); color: var(--text-on-inverse); border-radius: 7px; padding: 3px 8px;
   font-size: 12px; font-weight: 700; letter-spacing: -0.02em; flex: none;
 }
 .topbar__workspace { display: flex; align-items: center; gap: 5px; cursor: pointer; color: var(--text-muted); }
@@ -320,7 +371,7 @@ input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 .slash-menu__tile {
   display: inline-flex; align-items: center; justify-content: center;
   width: 34px; height: 34px; border-radius: var(--radius-md); background: var(--accent-soft);
-  color: var(--accent); flex: none;
+  color: var(--accent-soft-fg); flex: none;
 }
 .slash-menu__body { flex: 1; }
 .slash-menu__name { font-size: 13px; font-weight: 600; color: var(--text-strong); }
@@ -373,7 +424,7 @@ input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 .empty-state__tile {
   display: inline-flex; align-items: center; justify-content: center;
   width: 64px; height: 64px; border-radius: var(--radius-xl); background: var(--accent-soft);
-  color: var(--accent); margin-bottom: 16px;
+  color: var(--accent-soft-fg); margin-bottom: 16px;
 }
 .empty-state__title { font-size: 16px; font-weight: 600; color: var(--text-strong); margin-bottom: 6px; }
 .empty-state__desc { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
@@ -407,7 +458,7 @@ input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
   font-size: 13px; font-weight: 600; color: var(--status-danger); flex: none;
   transition: background var(--dur-fast) var(--ease-standard);
 }
-.detail-delete-btn:hover { background: #fdeae9; }
+.detail-delete-btn:hover { background: var(--status-danger-soft); }
 
 .detail-cover {
   position: relative; width: 100%; height: 200px;
@@ -444,7 +495,7 @@ input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 .detail-char-count {
   position: fixed; right: 32px; bottom: 24px; z-index: 10; pointer-events: none;
   padding: 4px 10px; border-radius: var(--radius-md);
-  background: var(--gray-900); color: var(--text-on-accent);
+  background: var(--surface-inverse); color: var(--text-on-inverse);
   font-size: 12px; font-weight: 600; line-height: 1;
   box-shadow: var(--shadow-sm);
 }

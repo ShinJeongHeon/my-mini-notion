@@ -56,6 +56,13 @@
 위반 없음 유지: 신규 추상화는 `lib/theme.ts` 단일 모듈, 엔티티는 ThemePreference
 1개, 계약은 DOM 속성 + storage 키 + 토큰 테이블뿐이다. ✅
 
+2026-07-22 재검증(/speckit-plan 재실행, worktree wt2): 계획 전제를 실제
+코드베이스와 대조 확인 — DESIGN.md §7 다크모드 미구현 TODO(라인 947–948),
+globals.css 시맨틱 토큰 27종, contracts §6 이관 대상 7곳 전부 존재,
+AppShell의 `.sidebar__scroll`/`.sidebar__profile` 구조, `data-theme`·
+`lib/theme.ts` 부재(미구현 상태), 인용 번들 문서 2건과 근거 문구 실재.
+위반 없음 유지. ✅
+
 ## Project Structure
 
 ### Documentation (this feature)
@@ -81,6 +88,7 @@ app/
 
 components/
 ├── AppShell.tsx         # [수정] 사이드바 하단(프로필 위)에 테마 토글 버튼 추가
+├── ThemeScript.tsx      # [신규] no-FOUC 스크립트 주입용 클라이언트 컴포넌트 (구현 중 추가 — 아래 참고)
 └── ui/                  # 변경 없음 (SidebarItem 스타일 패턴 재사용)
 
 lib/
@@ -96,6 +104,13 @@ DESIGN.md                # [수정] §1 다크 토큰 표(신규 §1.8)·§2 토
 **Structure Decision**: 기존 단일 Next.js 앱 구조를 그대로 사용한다. 테마 로직은
 `lib/`(스토어와 동급), 토글 UI는 `components/AppShell.tsx` 내부(사이드바 소유자),
 스타일은 `app/globals.css`의 토큰 계층에만 손을 대 화면 파일 수정을 0으로 만든다.
+
+**구현 중 편차(2026-07-22)**: 이 Next.js 버전은 서버 컴포넌트(layout)가 import하는
+모듈의 React 훅 import 자체를 컴파일 에러로 거부한다(브라우저 E2E에서 500으로 검출).
+따라서 `lib/theme.ts`는 `"use client"` 모듈로 두고, 레이아웃에는 클라이언트 컴포넌트
+`components/ThemeScript.tsx`를 통해 `THEME_INIT_SCRIPT`를 주입한다 — 클라이언트
+컴포넌트도 SSR 시 초기 HTML `<head>`에 렌더되므로 no-FOUC 경로(FR-007)는 동일하며
+브라우저 검증으로 확인 완료. `lib/theme.ts`의 export 표면(contracts §4)은 불변.
 
 ## Complexity Tracking
 

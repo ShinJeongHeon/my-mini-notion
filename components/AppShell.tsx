@@ -11,13 +11,16 @@ import {
   House,
   LayoutGrid,
   Menu,
+  Moon,
   Plus,
   Search,
   Settings,
   SquareCheck,
+  Sun,
   Trash2,
 } from "lucide-react";
 import { useApp } from "@/lib/store";
+import { useTheme } from "@/lib/theme";
 import { Avatar } from "@/components/ui/Avatar";
 import { IconButton } from "@/components/ui/IconButton";
 import { SidebarItem } from "@/components/ui/SidebarItem";
@@ -28,6 +31,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState("");
+  const { theme, toggle: toggleTheme } = useTheme();
+  const themeLabel = theme === "dark" ? "라이트 모드" : "다크 모드";
 
   // Client-side auth guard: bounce to /login when signed out.
   useEffect(() => {
@@ -115,6 +120,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <SidebarItem icon={Trash2} label="휴지통" />
               </SidebarSection>
             </div>
+
+            <button
+              type="button"
+              className="sidebar-item"
+              data-testid="theme-toggle"
+              aria-label={themeLabel}
+              onClick={toggleTheme}
+            >
+              <span className="sidebar-item__icon">
+                {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+              </span>
+              <span className="sidebar-item__label">{themeLabel}</span>
+            </button>
           </div>
 
           <button
