@@ -290,7 +290,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const saveProfile = useCallback(
     async (fields: { name: string; introduction: string }) => {
       const name = (fields.name || "").trim() || null;
-      const introduction = fields.introduction;
+      // Whitespace-only means "cleared"; real content is stored verbatim so
+      // line breaks and inner spacing survive round-trips.
+      const introduction =
+        fields.introduction.trim() === "" ? null : fields.introduction;
       setState((s) => ({ ...s, nickname: name, introduction }));
       if (!userId) return true;
       const { error } = await supabase

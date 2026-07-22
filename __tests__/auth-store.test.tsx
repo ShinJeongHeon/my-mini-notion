@@ -108,6 +108,13 @@ function Probe() {
       >
         프로필 저장
       </button>
+      <button
+        onClick={() =>
+          void app.saveProfile({ name: "새 별명", introduction: "  \n  " })
+        }
+      >
+        공백 소개 저장
+      </button>
     </div>
   );
 }
@@ -214,6 +221,28 @@ test("프로필 저장 시 별명과 자기소개가 한 번의 업데이트로 
     )
   );
   expect(screen.getByTestId("display-name").textContent).toBe("새 별명");
+});
+
+test("공백·줄바꿈만 있는 자기소개는 null로 저장된다", async () => {
+  mocks.session = googleSession;
+  mocks.profileRow = {
+    name: "김민수",
+    image_path: null,
+    introduction: "기존 소개",
+  };
+  render(
+    <AppProvider>
+      <Probe />
+    </AppProvider>
+  );
+  await waitFor(() => expect(mocks.profileSelect).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole("button", { name: "공백 소개 저장" }));
+  await waitFor(() =>
+    expect(mocks.profileUpdate).toHaveBeenCalledWith(
+      { name: "새 별명", introduction: null },
+      "user-1"
+    )
+  );
 });
 
 test("profile 행의 introduction이 app.introduction으로 노출된다", async () => {

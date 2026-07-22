@@ -144,6 +144,32 @@ test("저장된 자기소개가 로딩 완료 후 입력란에 채워진다", as
   });
 });
 
+test("자기소개를 전부 지우고 저장하면 미등록(null)으로 저장되고 빈 입력란과 안내 문구가 남는다", async () => {
+  mocks.profileRow = {
+    name: "김민수",
+    image_path: null,
+    introduction: "지울 소개",
+  };
+  renderMyPage();
+  await waitFor(() => {
+    const intro = screen.getByLabelText("자기소개") as HTMLTextAreaElement;
+    expect(intro.value).toBe("지울 소개");
+  });
+  fireEvent.change(screen.getByLabelText("자기소개"), {
+    target: { value: "" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "변경사항 저장" }));
+  await waitFor(() =>
+    expect(mocks.profileUpdate).toHaveBeenCalledWith(
+      { name: "김민수", introduction: null },
+      "user-1"
+    )
+  );
+  const intro = screen.getByLabelText("자기소개") as HTMLTextAreaElement;
+  expect(intro.value).toBe("");
+  expect(intro.getAttribute("placeholder")).toBe("자기소개를 입력하세요");
+});
+
 test("저장이 실패하면 안내가 표시되고 입력한 내용은 유지된다", async () => {
   mocks.updateError = { message: "network error" };
   const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});

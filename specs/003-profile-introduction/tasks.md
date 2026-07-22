@@ -105,12 +105,12 @@ textarea에 표시. (quickstart.md 표 #4–5)
 
 ### Tests for User Story 3 (MANDATORY — TDD per constitution) ⚠️
 
-- [ ] T013 [P] [US3] RED: `__tests__/auth-store.test.tsx` — 공백·줄바꿈만인 introduction(`"  \n  "`)으로 saveProfile 호출 시 update patch가 `introduction: null`임을 단언(FR-004, contracts §4-3). 실패 확인(현재는 원문 그대로 전달되므로 실패해야 정상)
-- [ ] T014 [P] [US3] RED: `__tests__/mypage-introduction.test.tsx` — 기존 자기소개가 채워진 상태에서 textarea를 전부 비우고 저장 → update patch `introduction: null` + 저장 후 textarea가 빈 값·placeholder 노출 상태임을 단언(US3-2). 실패 확인
+- [X] T013 [P] [US3] RED: `__tests__/auth-store.test.tsx` — 공백·줄바꿈만인 introduction(`"  \n  "`)으로 saveProfile 호출 시 update patch가 `introduction: null`임을 단언(FR-004, contracts §4-3). 실패 확인(현재는 원문 그대로 전달되므로 실패해야 정상)
+- [X] T014 [P] [US3] RED: `__tests__/mypage-introduction.test.tsx` — 기존 자기소개가 채워진 상태에서 textarea를 전부 비우고 저장 → update patch `introduction: null` + 저장 후 textarea가 빈 값·placeholder 노출 상태임을 단언(US3-2). 실패 확인
 
 ### Implementation for User Story 3
 
-- [ ] T015 [US3] GREEN: `lib/store.tsx` — saveProfile에 정규화 추가: `introduction.trim() === ""`이면 `null`, 아니면 원문 그대로(내부 줄바꿈·공백 무가공 — research.md §3). T013·T014 통과 + 전체 green 확인
+- [X] T015 [US3] GREEN: `lib/store.tsx` — saveProfile에 정규화 추가: `introduction.trim() === ""`이면 `null`, 아니면 원문 그대로(내부 줄바꿈·공백 무가공 — research.md §3). T013·T014 통과 + 전체 green 확인
 
 **Checkpoint**: 세 스토리 전부 독립 검증 가능
 
