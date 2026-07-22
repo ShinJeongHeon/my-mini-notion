@@ -20,3 +20,22 @@ export function writeLocalPref(key: string, value: string): void {
     // best-effort: 저장 실패는 무시(다음 방문 시 기본값으로 동작)
   }
 }
+
+// JSON 변형 — 구조화된 로컬 값(즐겨찾기 목록, 프로필 폴백 캐시)용.
+// 검증은 호출부 몫이다(파싱 결과 형상은 키마다 다르므로).
+export function readLocalJson<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeLocalJson(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // best-effort
+  }
+}

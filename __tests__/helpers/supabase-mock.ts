@@ -3,6 +3,7 @@
 // 로 사용한다. page row는 실측 테이블 형상 전체를 반영한다
 // (specs/003-supabase-page-posts/data-model.md §1.1).
 import { vi } from "vitest";
+import type { Post } from "@/lib/store";
 
 export type PageRow = {
   id: string;
@@ -10,6 +11,12 @@ export type PageRow = {
   title: string | null;
   content: string | null;
   user_id: string;
+};
+
+export type ProfileRow = {
+  name: string | null;
+  image_path: string | null;
+  introduction: string | null;
 };
 
 type AuthCallback = (event: string, session: unknown) => void;
@@ -23,7 +30,8 @@ export const state = {
   insertError: null as SupaError,
   updateError: null as SupaError,
   deleteError: null as SupaError,
-  profileRow: null as null | { name: string | null; image_path: string | null },
+  profileRow: null as null | ProfileRow,
+  profileUpdateError: null as SupaError,
   insertSeq: 0,
 };
 
@@ -33,6 +41,8 @@ export const spies = {
   pageUpdate: vi.fn(),
   pageDelete: vi.fn(),
   profileSelect: vi.fn(),
+  profileInsert: vi.fn(),
+  profileUpdate: vi.fn(),
   signInWithOAuth: vi.fn(),
   signOut: vi.fn(),
 };
@@ -45,7 +55,8 @@ export function resetSupabaseMock() {
   state.insertError = null;
   state.updateError = null;
   state.deleteError = null;
-  state.profileRow = { name: null, image_path: null };
+  state.profileRow = { name: null, image_path: null, introduction: null };
+  state.profileUpdateError = null;
   state.insertSeq = 0;
   for (const spy of Object.values(spies)) spy.mockClear();
   spies.signInWithOAuth.mockResolvedValue({ data: {}, error: null });
@@ -73,6 +84,29 @@ export function makePageRow(overrides: Partial<PageRow> & { id: string }): PageR
   };
 }
 
+export function makePost(overrides: Partial<Post> & { id: string }): Post {
+  return {
+    title: "제목",
+    content: "",
+    favorite: false,
+    createdAt: Date.now(),
+    ...overrides,
+  };
+}
+
+// 게시글은 page 테이블에서 온다 — 로그인 세션과 서버 rows로 시딩한다.
+export function seedPosts(posts: Post[]) {
+  state.session = googleSession;
+  state.pageRows = posts.map((p) =>
+    makePageRow({
+      id: p.id,
+      title: p.title || null,
+      content: p.content || null,
+      created_at: new Date(p.createdAt).toISOString(),
+    })
+  );
+}
+
 function profileTable() {
   return {
     select: () => ({
@@ -86,14 +120,28 @@ function profileTable() {
     insert: (row: { user_id: string; name: string | null }) => ({
       select: () => ({
         maybeSingle: async () => {
-          state.profileRow = { name: row.name ?? null, image_path: null };
+          spies.profileInsert(row);
+          state.profileRow = {
+            name: row.name ?? null,
+            image_path: null,
+            introduction: null,
+          };
           return { data: state.profileRow, error: null };
         },
       }),
     }),
-    update: (patch: { name: string | null }) => ({
-      eq: async (_col: string, _id: string) => {
-        state.profileRow = { name: patch.name, image_path: null };
+    update: (patch: Partial<ProfileRow>) => ({
+      eq: async (_col: string, id: string) => {
+        spies.profileUpdate(patch, id);
+        if (state.profileUpdateError) return { error: state.profileUpdateError };
+        // 부분 patch 병합 — 지정되지 않은 컬럼(image_path 등)은 보존한다.
+        state.profileRow = {
+          name: null,
+          image_path: null,
+          introduction: null,
+          ...state.profileRow,
+          ...patch,
+        };
         return { error: null };
       },
     }),

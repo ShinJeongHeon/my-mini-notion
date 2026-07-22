@@ -535,21 +535,19 @@ input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 .mypage-field { padding: 22px 0 4px; }
 .mypage-field--email { padding: 16px 0 24px; }
 .mypage-field label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
-.field-input {
-  width: 100%; height: 42px; padding: 0 12px; background: var(--surface-card);
+.field-input,
+.field-textarea {
+  width: 100%; background: var(--surface-card);
   border: 1px solid var(--border-default); border-radius: var(--radius-md);
   font-size: 14px; color: var(--text-body); outline: none;
   transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
 }
-.field-input:focus { border-color: var(--border-focus); box-shadow: var(--shadow-focus); }
+.field-input { height: 42px; padding: 0 12px; }
 .field-textarea {
-  display: block; width: 100%; min-height: 96px; padding: 10px 12px;
-  background: var(--surface-card);
-  border: 1px solid var(--border-default); border-radius: var(--radius-md);
-  font-size: 14px; font-family: inherit; line-height: 1.6;
-  color: var(--text-body); outline: none; resize: vertical;
-  transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+  display: block; min-height: 96px; padding: 10px 12px;
+  font-family: inherit; line-height: 1.6; resize: vertical;
 }
+.field-input:focus,
 .field-textarea:focus { border-color: var(--border-focus); box-shadow: var(--shadow-focus); }
 .field-readonly {
   display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px;
@@ -559,16 +557,14 @@ input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 .field-readonly__value { flex: 1; font-size: 14px; color: var(--text-secondary); }
 
 .mypage-card__footer { display: flex; align-items: center; gap: 12px; padding-top: 20px; border-top: 1px solid var(--border-subtle); }
-.saved-note {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 13px; font-weight: 600; color: var(--status-success);
-  animation: mnPop 0.14s var(--ease-out);
-}
+.saved-note,
 .error-note {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 13px; font-weight: 600; color: var(--status-danger);
+  font-size: 13px; font-weight: 600;
   animation: mnPop 0.14s var(--ease-out);
 }
+.saved-note { color: var(--status-success); }
+.error-note { color: var(--status-danger); }
 .empty-state__action { margin-top: 16px; }
 
 .logout-card {

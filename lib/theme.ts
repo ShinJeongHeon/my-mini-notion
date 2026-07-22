@@ -17,8 +17,6 @@ export function resolveTheme(stored: unknown, systemDark: boolean): Theme {
   return systemDark ? "dark" : "light";
 }
 
-export { readLocalPref, writeLocalPref };
-
 // 루트 레이아웃 <head>의 인라인 스크립트 본문 — 첫 페인트 전에 실행되어
 // 반대 테마 플래시(FOUC)를 차단한다 (번들 문서 preventing-flash-before-hydration.md).
 // resolveTheme와 동일한 해석 규칙을 ES5 문법으로 인라인한다.

@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { AuthError, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { readLocalJson, writeLocalJson } from "@/lib/local-pref";
 
 export type Post = {
   id: string;
@@ -73,19 +74,12 @@ function rowToPost(row: PageRow, favorites: Set<string>): Post {
 const FAV_PREFIX = "mini-notion-fav:";
 
 function readFavorites(userId: string): Set<string> {
-  try {
-    const raw = localStorage.getItem(FAV_PREFIX + userId);
-    const ids = raw ? JSON.parse(raw) : [];
-    return new Set(Array.isArray(ids) ? ids : []);
-  } catch {
-    return new Set();
-  }
+  const ids = readLocalJson<unknown>(FAV_PREFIX + userId);
+  return new Set(Array.isArray(ids) ? (ids as string[]) : []);
 }
 
 function writeFavorites(userId: string, favorites: Set<string>) {
-  try {
-    localStorage.setItem(FAV_PREFIX + userId, JSON.stringify([...favorites]));
-  } catch {}
+  writeLocalJson(FAV_PREFIX + userId, [...favorites]);
 }
 
 export function formatDate(ts: number): string {
@@ -115,6 +109,7 @@ type AppState = {
 
 type AppStore = {
   loaded: boolean;
+  postsLoaded: boolean;
   loggedIn: boolean;
   posts: Post[];
   postsError: string | null;
@@ -172,28 +167,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const resyncAfterError = useCallback(
     async (ownerId: string, message: string) => {
       setState((s) => ({ ...s, postsError: message }));
-      const posts = await fetchPosts(ownerId);
-      if (posts) setState((s) => ({ ...s, posts }));
+      await loadPosts(ownerId);
     },
-    [fetchPosts]
+    [loadPosts]
   );
 
   // Load the local profile fallback (nickname/imagePath) once. Posts live in
   // the page table only (FR-002) — no localStorage posts, no sample seeding.
   useEffect(() => {
-    let nickname: string | null = null;
-    let introduction: string | null = null;
-    let imagePath: string | null = null;
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) {
-        const d = JSON.parse(raw);
-        nickname = d.nickname || null;
-        introduction = d.introduction || null;
-        imagePath = d.imagePath || null;
-      }
-    } catch {}
-    setState((s) => ({ ...s, dataLoaded: true, nickname, introduction, imagePath }));
+    const d = readLocalJson<{
+      nickname?: string | null;
+      introduction?: string | null;
+      imagePath?: string | null;
+    }>(KEY);
+    setState((s) => ({
+      ...s,
+      dataLoaded: true,
+      nickname: d?.nickname || null,
+      introduction: d?.introduction || null,
+      imagePath: d?.imagePath || null,
+    }));
   }, []);
 
   // Pull the 1:1 profile row and use its name as the nickname. The DB trigger
@@ -223,6 +216,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Mirror the Supabase session (INITIAL_SESSION covers the first load,
   // including the OAuth code exchange when returning from Google).
+  const loadedUserRef = useRef<string | null>(null);
   useEffect(() => {
     const {
       data: { subscription },
@@ -233,6 +227,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         saveTimerRef.current.forEach((timer) => clearTimeout(timer));
         saveTimerRef.current.clear();
         pendingPatchRef.current.clear();
+        loadedUserRef.current = null;
       }
       setState((s) => ({
         ...s,
@@ -242,8 +237,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...(user ? {} : { postsLoaded: true, posts: [] }),
       }));
       // Supabase calls inside this callback can deadlock the auth lock,
-      // so defer the profile fetch to the next tick.
-      if (user && (event === "INITIAL_SESSION" || event === "SIGNED_IN")) {
+      // so defer the profile fetch to the next tick. supabase-js는 탭 포커스
+      // 복귀 등에서 같은 세션으로 SIGNED_IN을 재발화하므로, 같은 사용자면
+      // 전체 재조회를 건너뛴다.
+      if (
+        user &&
+        (event === "INITIAL_SESSION" || event === "SIGNED_IN") &&
+        loadedUserRef.current !== user.id
+      ) {
+        loadedUserRef.current = user.id;
         setTimeout(() => {
           void syncProfile(user);
           void loadPosts(user.id);
@@ -256,17 +258,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Persist the local profile fallback on change (posts are never stored here).
   useEffect(() => {
     if (!state.dataLoaded) return;
-    try {
-      localStorage.setItem(
-        KEY,
-        JSON.stringify({
-          nickname: state.nickname,
-          introduction: state.introduction,
-          imagePath: state.imagePath,
-        })
-      );
-    } catch {}
-  }, [state]);
+    writeLocalJson(KEY, {
+      nickname: state.nickname,
+      introduction: state.introduction,
+      imagePath: state.imagePath,
+    });
+  }, [state.dataLoaded, state.nickname, state.introduction, state.imagePath]);
 
   const userId = state.account?.id;
 
@@ -296,7 +293,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         posts: s.posts.map((p) => (p.id === id ? { ...p, ...patch } : p)),
       }));
       if (!userId) return;
-      const ownerId = userId;
       pendingPatchRef.current.set(id, {
         ...pendingPatchRef.current.get(id),
         ...patch,
@@ -317,7 +313,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               .eq("id", id);
             if (error) {
               void resyncAfterError(
-                ownerId,
+                userId,
                 "변경 내용을 저장하지 못했어요. 네트워크를 확인해 주세요."
               );
             }
@@ -445,7 +441,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const store: AppStore = {
-    loaded: state.dataLoaded && state.authLoaded && state.postsLoaded,
+    // 셸은 인증·로컬 폴백만 기다린다 — 글 목록 로딩은 postsLoaded로 따로
+    // 노출해 글이 실제로 필요한 화면(목록 빈 상태, 상세 not-found)만 기다린다.
+    loaded: state.dataLoaded && state.authLoaded,
+    postsLoaded: state.postsLoaded,
     loggedIn: !!state.account,
     posts: state.posts,
     postsError: state.postsError,

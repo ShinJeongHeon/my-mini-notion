@@ -4,62 +4,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { AppProvider } from "@/lib/store";
 import { installMatchMedia } from "./helpers/match-media";
+import { googleSession, resetSupabaseMock, state } from "./helpers/supabase-mock";
 
 vi.mock("next/navigation", () => ({
   usePathname: vi.fn(),
   useRouter: vi.fn(),
 }));
 
-// loggedIn은 Supabase 세션에서 파생되므로(lib/store.tsx) 세션을 목으로 제공한다.
-vi.mock("@/lib/supabase", () => ({
-  supabase: {
-    auth: {
-      onAuthStateChange: (
-        cb: (event: string, session: unknown) => void
-      ) => {
-        cb("INITIAL_SESSION", {
-          user: {
-            id: "user-1",
-            email: "minsu.kim@gmail.com",
-            user_metadata: { full_name: "김민수", avatar_url: null },
-          },
-        });
-        return { data: { subscription: { unsubscribe: vi.fn() } } };
-      },
-      signInWithOAuth: vi.fn().mockResolvedValue({ data: {}, error: null }),
-      signOut: vi.fn().mockResolvedValue({ error: null }),
-    },
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: { name: null }, error: null }),
-        }),
-        // page 테이블 목록 조회(fetchPosts) — 빈 목록이면 postsLoaded가 켜진다.
-        order: async () => ({ data: [], error: null }),
-      }),
-      insert: (row: { name: string | null }) => ({
-        select: () => ({
-          maybeSingle: async () => ({
-            data: { name: row.name ?? null },
-            error: null,
-          }),
-        }),
-      }),
-      update: (patch: { name: string | null }) => ({
-        eq: async () => ({ error: null }),
-      }),
-    }),
-  },
-}));
-
-const STORAGE_KEY = "mini-notion-v1";
-
-function seedPosts() {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({ posts: [], nickname: null, avatar: null, loggedIn: true })
-  );
-}
+vi.mock("@/lib/supabase", () => import("./helpers/supabase-mock"));
 
 function renderShell() {
   return render(
@@ -73,7 +25,8 @@ function renderShell() {
 
 beforeEach(() => {
   localStorage.clear();
-  seedPosts();
+  resetSupabaseMock();
+  state.session = googleSession;
   vi.mocked(usePathname).mockReturnValue("/");
   vi.mocked(useRouter).mockReturnValue({
     push: vi.fn(),
@@ -93,11 +46,9 @@ test("sidebar renders the theme toggle labeled 다크 모드 with a moon icon in
   installMatchMedia(false);
   renderShell();
 
-  const btn = await screen.findByTestId("theme-toggle");
+  const btn = await screen.findByRole("button", { name: "다크 모드" });
   expect(btn.tagName).toBe("BUTTON");
   expect(btn.getAttribute("type")).toBe("button");
-  expect(btn.textContent).toContain("다크 모드");
-  expect(btn.getAttribute("aria-label")).toBe("다크 모드");
   expect(btn.querySelector("svg.lucide-moon")).not.toBeNull();
   expect(btn.querySelector("svg.lucide-sun")).toBeNull();
 });
@@ -106,12 +57,12 @@ test("clicking the toggle switches the app to dark and relabels to 라이트 모
   installMatchMedia(false);
   renderShell();
 
-  const btn = await screen.findByTestId("theme-toggle");
+  const btn = await screen.findByRole("button", { name: "다크 모드" });
   fireEvent.click(btn);
 
   expect(document.documentElement.dataset.theme).toBe("dark");
-  expect(btn.textContent).toContain("라이트 모드");
-  expect(btn.getAttribute("aria-label")).toBe("라이트 모드");
+  const relabeled = screen.getByRole("button", { name: "라이트 모드" });
+  expect(relabeled).toBe(btn);
   expect(btn.querySelector("svg.lucide-sun")).not.toBeNull();
   expect(btn.querySelector("svg.lucide-moon")).toBeNull();
 });
@@ -120,7 +71,7 @@ test("clicking the toggle records the explicit choice in localStorage", async ()
   installMatchMedia(false);
   renderShell();
 
-  const btn = await screen.findByTestId("theme-toggle");
+  const btn = await screen.findByRole("button", { name: "다크 모드" });
   fireEvent.click(btn);
   expect(localStorage.getItem("mini-notion-theme")).toBe("dark");
 
@@ -132,10 +83,10 @@ test("clicking the toggle twice returns the app to light", async () => {
   installMatchMedia(false);
   renderShell();
 
-  const btn = await screen.findByTestId("theme-toggle");
+  const btn = await screen.findByRole("button", { name: "다크 모드" });
   fireEvent.click(btn);
   fireEvent.click(btn);
 
   expect(document.documentElement.dataset.theme).toBe("light");
-  expect(btn.textContent).toContain("다크 모드");
+  expect(screen.getByRole("button", { name: "다크 모드" })).toBe(btn);
 });

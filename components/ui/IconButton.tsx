@@ -2,29 +2,29 @@
 
 import type { LucideIcon } from "lucide-react";
 
-type IconButtonProps = {
+// 표준 button 속성(aria-*, onClick, disabled …)은 그대로 통과시킨다 —
+// 속성마다 전용 prop을 늘리지 않는다.
+type IconButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   icon: LucideIcon;
   size?: "sm" | "md";
-  title?: string;
-  ariaExpanded?: boolean;
-  onClick?: React.MouseEventHandler<HTMLButtonElement>;
 };
 
 export function IconButton({
   icon: Icon,
   size = "md",
   title,
-  ariaExpanded,
-  onClick,
+  className,
+  ...rest
 }: IconButtonProps) {
   return (
     <button
       type="button"
-      className={`icon-btn${size === "sm" ? " icon-btn--sm" : ""}`}
+      className={`icon-btn${size === "sm" ? " icon-btn--sm" : ""}${
+        className ? ` ${className}` : ""
+      }`}
       title={title}
       aria-label={title}
-      aria-expanded={ariaExpanded}
-      onClick={onClick}
+      {...rest}
     >
       <Icon size={size === "sm" ? 14 : 16} />
     </button>

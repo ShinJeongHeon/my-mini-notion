@@ -5,64 +5,14 @@ import { PanelLeftClose } from "lucide-react";
 import { IconButton } from "@/components/ui/IconButton";
 import { AppShell } from "@/components/AppShell";
 import { AppProvider } from "@/lib/store";
-import { readLocalPref, writeLocalPref } from "@/lib/local-pref";
+import { googleSession, resetSupabaseMock, state } from "./helpers/supabase-mock";
 
-// 외부 경계 목 — __tests__/auth-store.test.tsx의 검증된 완전한 형태 재사용(헌법 II)
-const mocks = vi.hoisted(() => ({
-  session: null as null | { user: unknown },
-  profileRow: null as null | { name: string | null },
-}));
-
-vi.mock("@/lib/supabase", () => ({
-  supabase: {
-    auth: {
-      onAuthStateChange: (
-        cb: (event: string, session: typeof mocks.session) => void
-      ) => {
-        cb("INITIAL_SESSION", mocks.session);
-        return { data: { subscription: { unsubscribe: vi.fn() } } };
-      },
-      signInWithOAuth: vi.fn().mockResolvedValue({ data: {}, error: null }),
-      signOut: vi.fn().mockResolvedValue({ error: null }),
-    },
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: mocks.profileRow, error: null }),
-        }),
-        // page 테이블 목록 조회(fetchPosts) — 빈 목록이면 postsLoaded가 켜진다.
-        order: async () => ({ data: [], error: null }),
-      }),
-      insert: (row: { user_id: string; name: string | null }) => ({
-        select: () => ({
-          maybeSingle: async () => {
-            mocks.profileRow = { name: row.name ?? null };
-            return { data: mocks.profileRow, error: null };
-          },
-        }),
-      }),
-      update: (patch: { name: string | null }) => ({
-        eq: async () => {
-          mocks.profileRow = { name: patch.name };
-          return { error: null };
-        },
-      }),
-    }),
-  },
-}));
+vi.mock("@/lib/supabase", () => import("./helpers/supabase-mock"));
 
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(),
   usePathname: vi.fn(),
 }));
-
-const googleSession = {
-  user: {
-    id: "user-1",
-    email: "minsu.kim@gmail.com",
-    user_metadata: { full_name: "김민수" },
-  },
-};
 
 const SIDEBAR_KEY = "mini-notion-sidebar";
 const SEARCH_PLACEHOLDER = "글 검색";
@@ -79,8 +29,8 @@ function renderShell() {
 
 beforeEach(() => {
   localStorage.clear();
-  mocks.session = googleSession;
-  mocks.profileRow = { name: null };
+  resetSupabaseMock();
+  state.session = googleSession;
   vi.mocked(useRouter).mockReturnValue({
     push: vi.fn(),
     replace: vi.fn(),
@@ -93,58 +43,30 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-// ── lib/local-pref: 기기 로컬 UI 선호값 접근자 (계약 §1) ────────────────
+// ── IconButton 표준 button 속성 통과 (계약 §2) ──────────────────────────
 
-describe("lib/local-pref", () => {
-  const ALLOWED = ["collapsed", "expanded"] as const;
-
-  test("write→read 라운드트립: 허용값은 그대로 돌아온다", () => {
-    writeLocalPref(SIDEBAR_KEY, "collapsed");
-    expect(readLocalPref(SIDEBAR_KEY, ALLOWED)).toBe("collapsed");
-  });
-
-  test("허용 목록에 없는 저장값은 null (무효값 폴백)", () => {
-    localStorage.setItem(SIDEBAR_KEY, "banana");
-    expect(readLocalPref(SIDEBAR_KEY, ALLOWED)).toBeNull();
-  });
-
-  test("키가 없으면 null", () => {
-    expect(readLocalPref(SIDEBAR_KEY, ALLOWED)).toBeNull();
-  });
-
-  test("setItem이 throw해도 writeLocalPref는 예외를 삼킨다 (best-effort)", () => {
-    const spy = vi
-      .spyOn(Storage.prototype, "setItem")
-      .mockImplementation(() => {
-        throw new Error("QuotaExceededError");
-      });
-    expect(() => writeLocalPref(SIDEBAR_KEY, "collapsed")).not.toThrow();
-    spy.mockRestore();
-  });
-});
-
-// ── IconButton ariaExpanded prop (계약 §2) ──────────────────────────────
-
-describe("IconButton ariaExpanded", () => {
-  test('ariaExpanded가 true면 aria-expanded="true"를 출력한다', () => {
-    render(<IconButton icon={PanelLeftClose} title="사이드바 접기" ariaExpanded />);
+describe("IconButton aria-expanded 통과", () => {
+  test('aria-expanded가 true면 aria-expanded="true"를 출력한다', () => {
+    render(
+      <IconButton icon={PanelLeftClose} title="사이드바 접기" aria-expanded />
+    );
     const btn = screen.getByRole("button", { name: "사이드바 접기" });
     expect(btn.getAttribute("aria-expanded")).toBe("true");
   });
 
-  test('ariaExpanded가 false면 aria-expanded="false"를 출력한다', () => {
+  test('aria-expanded가 false면 aria-expanded="false"를 출력한다', () => {
     render(
       <IconButton
         icon={PanelLeftClose}
         title="사이드바 펼치기"
-        ariaExpanded={false}
+        aria-expanded={false}
       />
     );
     const btn = screen.getByRole("button", { name: "사이드바 펼치기" });
     expect(btn.getAttribute("aria-expanded")).toBe("false");
   });
 
-  test("ariaExpanded 미지정 시 aria-expanded 속성 자체가 없다 (기존 사용처 무영향)", () => {
+  test("미지정 시 aria-expanded 속성 자체가 없다 (기존 사용처 무영향)", () => {
     render(<IconButton icon={PanelLeftClose} title="알림" />);
     const btn = screen.getByRole("button", { name: "알림" });
     expect(btn.getAttribute("aria-expanded")).toBeNull();

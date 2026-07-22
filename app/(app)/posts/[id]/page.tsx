@@ -21,7 +21,8 @@ export default function PostDetailPage() {
 
   const post = app.posts.find((p) => p.id === id);
 
-  if (!app.loaded) return null;
+  // 목록 로딩이 끝나기 전에는 not-found를 판정할 수 없다.
+  if (!app.postsLoaded) return null;
 
   // 삭제되었거나 볼 수 없는 글 — RLS 덕에 타인 글도 "없음"으로만 관측된다 (US2-2).
   if (!post) {

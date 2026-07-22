@@ -96,7 +96,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <IconButton
               icon={PanelLeftOpen}
               title="사이드바 펼치기"
-              ariaExpanded={false}
+              aria-expanded={false}
               onClick={toggleSidebar}
             />
           </div>
@@ -108,7 +108,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <IconButton
                 icon={PanelLeftClose}
                 title="사이드바 접기"
-                ariaExpanded
+                aria-expanded
                 onClick={toggleSidebar}
               />
             </div>
@@ -146,7 +146,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     onClick={() => router.push(`/posts/${post.id}`)}
                   />
                 ))}
-                {app.posts.length === 0 && (
+                {app.postsLoaded && app.posts.length === 0 && (
                   <div className="sidebar-section__empty">
                     아직 글이 없어요.
                   </div>
@@ -160,18 +160,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </SidebarSection>
             </div>
 
-            <button
-              type="button"
-              className="sidebar-item"
-              data-testid="theme-toggle"
-              aria-label={themeLabel}
+            <SidebarItem
+              icon={theme === "dark" ? Sun : Moon}
+              label={themeLabel}
               onClick={toggleTheme}
-            >
-              <span className="sidebar-item__icon">
-                {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-              </span>
-              <span className="sidebar-item__label">{themeLabel}</span>
-            </button>
+            />
           </div>
 
           <button

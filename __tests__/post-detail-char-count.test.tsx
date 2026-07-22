@@ -2,13 +2,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useParams, useRouter } from "next/navigation";
 import PostDetailPage from "@/app/(app)/posts/[id]/page";
-import { AppProvider, type Post } from "@/lib/store";
-import {
-  googleSession,
-  makePageRow,
-  resetSupabaseMock,
-  state,
-} from "./helpers/supabase-mock";
+import { AppProvider } from "@/lib/store";
+import { makePost, resetSupabaseMock, seedPosts } from "./helpers/supabase-mock";
 
 vi.mock("@/lib/supabase", () => import("./helpers/supabase-mock"));
 
@@ -19,29 +14,6 @@ vi.mock("next/navigation", () => ({
 
 const CONTENT_PLACEHOLDER =
   "내용을 입력하세요. 떠오르는 생각, 할 일, 메모를 자유롭게 기록해 보세요.";
-
-// 게시글은 page 테이블에서 온다 — 로그인 세션과 서버 rows로 시딩한다.
-function seedPosts(posts: Post[]) {
-  state.session = googleSession;
-  state.pageRows = posts.map((p) =>
-    makePageRow({
-      id: p.id,
-      title: p.title || null,
-      content: p.content || null,
-      created_at: new Date(p.createdAt).toISOString(),
-    })
-  );
-}
-
-function makePost(overrides: Partial<Post> & { id: string }): Post {
-  return {
-    title: "제목",
-    content: "",
-    favorite: false,
-    createdAt: Date.now(),
-    ...overrides,
-  };
-}
 
 beforeEach(() => {
   localStorage.clear();

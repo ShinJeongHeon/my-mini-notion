@@ -160,7 +160,7 @@ export default function ListPage() {
             ))}
           </div>
         </>
-      ) : (
+      ) : app.postsLoaded ? (
         <div className="empty-state">
           <span className="empty-state__tile">
             <FilePlus2 size={40} />
@@ -172,7 +172,7 @@ export default function ListPage() {
             ‘새 페이지’ 버튼을 눌러 시작하세요.
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

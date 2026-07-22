@@ -3,10 +3,8 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import {
   THEME_INIT_SCRIPT,
   THEME_STORAGE_KEY,
-  readLocalPref,
   resolveTheme,
   useTheme,
-  writeLocalPref,
 } from "@/lib/theme";
 import { installMatchMedia } from "./helpers/match-media";
 
@@ -52,42 +50,7 @@ test('THEME_STORAGE_KEY is "mini-notion-theme"', () => {
   expect(THEME_STORAGE_KEY).toBe("mini-notion-theme");
 });
 
-// ---------------------------------------------------------------------------
-// readLocalPref / writeLocalPref — 제네릭 기기 로컬 선호값 접근자 (contracts §4)
-// ---------------------------------------------------------------------------
-
-test("readLocalPref returns the stored value when it is in the allowed list", () => {
-  localStorage.setItem("pref-key", "dark");
-  expect(readLocalPref("pref-key", ["light", "dark"])).toBe("dark");
-});
-
-test("readLocalPref returns null for a stored value outside the allowed list", () => {
-  localStorage.setItem("pref-key", "banana");
-  expect(readLocalPref("pref-key", ["light", "dark"])).toBeNull();
-});
-
-test("readLocalPref returns null when the key is absent", () => {
-  expect(readLocalPref("pref-key", ["light", "dark"])).toBeNull();
-});
-
-test("readLocalPref returns null instead of throwing when storage access is blocked", () => {
-  vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-    throw new Error("storage blocked");
-  });
-  expect(readLocalPref("pref-key", ["light", "dark"])).toBeNull();
-});
-
-test("writeLocalPref persists the value", () => {
-  writeLocalPref("pref-key", "light");
-  expect(localStorage.getItem("pref-key")).toBe("light");
-});
-
-test("writeLocalPref does not throw when storage access is blocked", () => {
-  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-    throw new Error("storage blocked");
-  });
-  expect(() => writeLocalPref("pref-key", "dark")).not.toThrow();
-});
+// readLocalPref/writeLocalPref 계약 테스트는 __tests__/local-pref.test.ts 참조.
 
 // ---------------------------------------------------------------------------
 // useTheme — 토글 버튼용 훅 (contracts §4, US1)
