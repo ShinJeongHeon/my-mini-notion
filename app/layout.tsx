@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { AppProvider } from "@/lib/store";
+import { ThemeScript } from "@/components/ThemeScript";
 import "./globals.css";
 
 const pretendard = localFont({
@@ -21,7 +22,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko" className={pretendard.variable}>
+    <html lang="ko" className={pretendard.variable} suppressHydrationWarning>
+      <head>
+        {/* 첫 페인트 전 테마 적용(no-FOUC) — preventing-flash-before-hydration.md */}
+        <ThemeScript />
+      </head>
       <body>
         <AppProvider>{children}</AppProvider>
       </body>
