@@ -50,7 +50,7 @@ vi.mock("@/lib/supabase", () => ({
           },
         }),
       }),
-      update: (patch: { name: string | null }) => ({
+      update: (patch: { name: string | null; introduction: string | null }) => ({
         eq: async (_col: string, id: string) => {
           mocks.profileUpdate(patch, id);
           mocks.profileRow = { name: patch.name };
@@ -84,8 +84,15 @@ function Probe() {
       <span data-testid="email">{app.email}</span>
       <span data-testid="display-name">{app.displayName}</span>
       <span data-testid="avatar">{app.avatar ?? ""}</span>
-      <button onClick={() => void app.saveNickname("새 별명")}>
-        별명 저장
+      <button
+        onClick={() =>
+          void app.saveProfile({
+            name: "새 별명",
+            introduction: "소개글\n둘째 줄",
+          })
+        }
+      >
+        프로필 저장
       </button>
     </div>
   );
@@ -176,7 +183,7 @@ test("profile 행이 이미 있으면 그 name이 별명(표시 이름)으로 �
   expect(mocks.profileInsert).not.toHaveBeenCalled();
 });
 
-test("별명 저장 시 profile 테이블의 name이 업데이트된다", async () => {
+test("프로필 저장 시 별명과 자기소개가 한 번의 업데이트로 저장된다(줄바꿈 원문 보존)", async () => {
   mocks.session = googleSession;
   mocks.profileRow = { name: "김민수" };
   render(
@@ -185,10 +192,10 @@ test("별명 저장 시 profile 테이블의 name이 업데이트된다", async 
     </AppProvider>
   );
   await waitFor(() => expect(mocks.profileSelect).toHaveBeenCalled());
-  fireEvent.click(screen.getByRole("button", { name: "별명 저장" }));
+  fireEvent.click(screen.getByRole("button", { name: "프로필 저장" }));
   await waitFor(() =>
     expect(mocks.profileUpdate).toHaveBeenCalledWith(
-      { name: "새 별명" },
+      { name: "새 별명", introduction: "소개글\n둘째 줄" },
       "user-1"
     )
   );

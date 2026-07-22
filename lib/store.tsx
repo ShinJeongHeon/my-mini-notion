@@ -126,7 +126,7 @@ type AppStore = {
   updatePost(id: string, patch: Partial<Pick<Post, "title" | "content">>): void;
   toggleFavorite(id: string): void;
   deletePost(id: string): void;
-  saveNickname(nick: string): Promise<boolean>;
+  saveProfile(fields: { name: string; introduction: string }): Promise<boolean>;
   saveAvatar(file: File): Promise<boolean>;
 };
 
@@ -269,17 +269,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, posts: s.posts.filter((p) => p.id !== id) }));
   }, []);
 
-  // Update local state immediately, then persist to the profile table.
+  // Update local state immediately, then persist nickname + introduction to
+  // the profile table in a single update so both always save together.
   // Resolves false when the Supabase update fails.
   const userId = state.account?.id;
-  const saveNickname = useCallback(
-    async (nick: string) => {
-      const name = (nick || "").trim() || null;
+  const saveProfile = useCallback(
+    async (fields: { name: string; introduction: string }) => {
+      const name = (fields.name || "").trim() || null;
+      const introduction = fields.introduction;
       setState((s) => ({ ...s, nickname: name }));
       if (!userId) return true;
       const { error } = await supabase
         .from("profile")
-        .update({ name })
+        .update({ name, introduction })
         .eq("user_id", userId);
       return !error;
     },
@@ -330,7 +332,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updatePost,
     toggleFavorite,
     deletePost,
-    saveNickname,
+    saveProfile,
     saveAvatar,
   };
 
