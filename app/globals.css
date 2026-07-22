@@ -144,7 +144,7 @@ html[data-theme="dark"] {
   --accent-soft-fg:   #93bdf8;
 
   /* Status */
-  --status-danger-soft: #3a201e;
+  --status-danger-soft: #2a1715; /* 상속되는 --status-danger(#f0483e) 텍스트와 4.6:1 — AA 유지(§1.8) */
 
   /* Scrollbar */
   --scrollbar-thumb:       #3a3a3a;

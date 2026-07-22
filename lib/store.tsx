@@ -102,7 +102,9 @@ export function formatDate(ts: number): string {
       new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) /
       864e5
   );
-  if (days === 0) return "오늘";
+  // created_at은 서버 발급 — 클라이언트 시계가 느리면 미래(days < 0)일 수
+  // 있다. 시계 오차로 만든 직후의 글에 내일 날짜를 붙이지 않는다.
+  if (days <= 0) return "오늘";
   if (days === 1) return "어제";
   return `${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
