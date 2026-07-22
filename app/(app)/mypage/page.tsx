@@ -14,18 +14,20 @@ export default function MyPage() {
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nickTouched = useRef(false);
   const introTouched = useRef(false);
 
-  // Fill the draft once profile data is loaded.
+  // Sync each draft from the store while its field is untouched. `loaded`
+  // flips before syncProfile's DB fetch lands, so values arriving late must
+  // still fill a pristine field — but never overwrite the user's typing.
+  // 별명도 동일 가드가 필요하다: saveProfile은 항상 별명+자기소개를 함께
+  // 저장하므로, stale 별명 draft는 자기소개만 고친 저장에서도 DB를 덮어쓴다.
   useEffect(() => {
-    if (app.loaded) setNickDraft(app.displayName);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [app.loaded]);
+    if (app.loaded && !nickTouched.current) {
+      setNickDraft(app.displayName);
+    }
+  }, [app.loaded, app.displayName]);
 
-  // Sync the introduction draft from the store while the field is untouched.
-  // `loaded` flips before syncProfile's DB fetch lands, so a saved
-  // introduction arriving late must still fill a pristine field — but never
-  // overwrite anything the user has started typing.
   useEffect(() => {
     if (app.loaded && !introTouched.current) {
       setIntroDraft(app.introduction ?? "");
@@ -101,7 +103,10 @@ export default function MyPage() {
             id="nickname"
             className="field-input"
             value={nickDraft}
-            onChange={(e) => setNickDraft(e.target.value)}
+            onChange={(e) => {
+              nickTouched.current = true;
+              setNickDraft(e.target.value);
+            }}
             placeholder="사용할 별명을 입력하세요"
           />
         </div>

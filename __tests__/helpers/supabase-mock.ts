@@ -33,6 +33,11 @@ export const state = {
   profileRow: null as null | ProfileRow,
   profileUpdateError: null as SupaError,
   insertSeq: 0,
+  // 타이밍 제어용 게이트 — 세팅하면 해당 요청이 이 promise를 기다린다.
+  // 레이스(생성 vs 초기 조회, 로그아웃 중 in-flight 저장) 테스트에 사용.
+  selectGate: null as null | Promise<void>,
+  insertGate: null as null | Promise<void>,
+  updateGate: null as null | Promise<void>,
 };
 
 export const spies = {
@@ -58,6 +63,9 @@ export function resetSupabaseMock() {
   state.profileRow = { name: null, image_path: null, introduction: null };
   state.profileUpdateError = null;
   state.insertSeq = 0;
+  state.selectGate = null;
+  state.insertGate = null;
+  state.updateGate = null;
   for (const spy of Object.values(spies)) spy.mockClear();
   spies.signInWithOAuth.mockResolvedValue({ data: {}, error: null });
   spies.signOut.mockResolvedValue({ error: null });
@@ -153,14 +161,20 @@ function pageTable() {
     select: (_cols?: string) => ({
       order: async (col: string, opts: { ascending: boolean }) => {
         spies.pageSelectOrder(col, opts);
-        if (state.selectError) return { data: null, error: state.selectError };
-        return { data: [...state.pageRows], error: null };
+        // 실제 DB처럼 요청 시점 스냅샷을 응답한다 — 게이트로 응답을 늦추면
+        // "스냅샷 이후의 변경을 모르는 낡은 응답"이 재현된다.
+        const err = state.selectError;
+        const snapshot = err ? null : [...state.pageRows];
+        if (state.selectGate) await state.selectGate;
+        if (err) return { data: null, error: err };
+        return { data: snapshot, error: null };
       },
     }),
     insert: (row: { title: string; content: string; user_id: string }) => ({
       select: () => ({
         single: async () => {
           spies.pageInsert(row);
+          if (state.insertGate) await state.insertGate;
           if (state.insertError) return { data: null, error: state.insertError };
           state.insertSeq += 1;
           const created: PageRow = {
@@ -175,10 +189,23 @@ function pageTable() {
         },
       }),
     }),
+    // 실제 PostgREST처럼: error 없이도 매칭 0행일 수 있고(삭제·RLS),
+    // 성공한 patch는 rows에 병합되어 이후 조회와 일치한다.
     update: (patch: { title?: string; content?: string }) => ({
-      eq: async (_col: string, id: string) => {
-        spies.pageUpdate(patch, id);
-        return { error: state.updateError };
+      eq: (_col: string, id: string) => {
+        const run = async () => {
+          spies.pageUpdate(patch, id);
+          if (state.updateGate) await state.updateGate;
+          if (state.updateError) return { data: null, error: state.updateError };
+          const matched = state.pageRows.filter((r) => r.id === id);
+          state.pageRows = state.pageRows.map((r) =>
+            r.id === id ? { ...r, ...patch } : r
+          );
+          return { data: matched.map((r) => ({ ...r, ...patch })), error: null };
+        };
+        const promise = run();
+        // 구식 체인(await …eq())과 신식(…eq().select()) 둘 다 지원.
+        return Object.assign(promise, { select: () => promise });
       },
     }),
     delete: () => ({

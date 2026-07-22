@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
@@ -44,6 +44,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       readLocalPref(SIDEBAR_PREF_KEY, SIDEBAR_PREF_VALUES) === "collapsed"
   );
 
+  const creatingRef = useRef(false);
+
   const toggleSidebar = () =>
     setCollapsed((c) => {
       const next = !c;
@@ -66,9 +68,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : app.posts;
 
   const newPage = async () => {
-    const post = await app.createPost("");
-    if (!post) return; // 실패 안내는 postsError로 노출된다 (FR-008)
-    router.push(`/posts/${post.id}`);
+    if (creatingRef.current) return; // insert 왕복 동안 재클릭 무시
+    creatingRef.current = true;
+    try {
+      const post = await app.createPost("");
+      if (!post) {
+        // 이 버튼은 모든 화면에 노출된다 — postsError 표시 영역이 없는
+        // 화면(마이페이지 등)에서도 실패가 보이도록 직접 알린다 (FR-008).
+        window.alert("글을 등록하지 못했어요. 잠시 후 다시 시도해 주세요.");
+        return;
+      }
+      router.push(`/posts/${post.id}`);
+    } finally {
+      creatingRef.current = false;
+    }
   };
 
   return (

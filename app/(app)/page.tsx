@@ -20,14 +20,21 @@ export default function ListPage() {
   const app = useApp();
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const showSlash = query.trim().startsWith("/");
 
   const createPage = async (title: string) => {
-    const post = await app.createPost(title);
-    if (!post) return; // 실패·비로그인 — postsError 안내가 표시된다 (FR-001/008)
-    setQuery("");
-    router.push(`/posts/${post.id}`);
+    if (creating) return; // insert 왕복 동안 재제출 금지 — 중복 글 방지
+    setCreating(true);
+    try {
+      const post = await app.createPost(title);
+      if (!post) return; // 실패·비로그인 — postsError 안내가 표시된다 (FR-001/008)
+      setQuery("");
+      router.push(`/posts/${post.id}`);
+    } finally {
+      setCreating(false);
+    }
   };
 
   const onQueryKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -36,6 +43,8 @@ export default function ListPage() {
       return;
     }
     if (e.key !== "Enter") return;
+    // 한글 IME 조합을 확정하는 Enter는 제출이 아니다.
+    if (e.nativeEvent.isComposing) return;
     e.preventDefault();
     const q = query.trim();
     if (!q) return;

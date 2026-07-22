@@ -25,6 +25,10 @@ const KEY = "mini-notion-v1";
 const SAVE_DEBOUNCE_MS = 600;
 const OWNER_NAME = "김민수";
 const PROFILE_IMAGE_BUCKET = "profile-image";
+// 같은 사용자 SIGNED_IN 재발화(탭 포커스 복귀 등)의 재동기화 최소 간격.
+const REFRESH_MIN_INTERVAL_MS = 60_000;
+const POSTS_LOAD_ERROR = "글 목록을 불러오지 못했어요. 네트워크를 확인해 주세요.";
+const POST_SAVE_ERROR = "변경 내용을 저장하지 못했어요. 네트워크를 확인해 주세요.";
 
 // Download URL = env base(스토리지 주소~버킷명) + "/" + image_path(버킷명 이후).
 function profileImageUrl(path: string | null): string | null {
@@ -81,6 +85,14 @@ function readFavorites(userId: string): Set<string> {
 function writeFavorites(userId: string, favorites: Set<string>) {
   writeLocalJson(FAV_PREFIX + userId, [...favorites]);
 }
+
+// 프로필 폴백 캐시 — 소유 계정 id를 함께 저장해 계정 간 유출을 막는다.
+type ProfileCache = {
+  userId?: string | null;
+  nickname?: string | null;
+  introduction?: string | null;
+  imagePath?: string | null;
+};
 
 export function formatDate(ts: number): string {
   const d = new Date(ts);
@@ -143,6 +155,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     account: null,
   });
 
+  // 글별 대기 patch·타이머 — 입력은 즉시 화면에, 저장은 디바운스로.
+  const pendingPatchRef = useRef(
+    new Map<string, Partial<Pick<Post, "title" | "content">>>()
+  );
+  const saveTimerRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  // 어느 계정의 목록을 이미 로드했는지 (재발화 가드 + 실패 시 재시도 재무장).
+  const loadedUserRef = useRef<string | null>(null);
+  // 세션 이벤트 기준의 현재 사용자 — 로그아웃 후 도착한 비동기 응답을 걸러낸다.
+  const userIdRef = useRef<string | null>(null);
+  // 목록 조회는 최신 요청만 반영한다 (늦게 도착한 옛 요청의 응답은 폐기).
+  const fetchSeqRef = useRef(0);
+  const lastLoadRef = useRef(0);
+  // 조회 스냅샷 이후의 로컬 생성/삭제 — 낡은 응답이 새 글을 지우거나
+  // 지운 글을 되살리지 않도록, 서버 응답이 확인해 줄 때까지 기억한다.
+  const recentlyCreatedRef = useRef(new Map<string, Post>());
+  const recentlyDeletedRef = useRef(new Set<string>());
+
   // 계정 소유 글 전체를 page 테이블에서 가져온다 (RLS가 소유자 격리를 강제).
   // 실패하면 null — 호출부가 기존 화면 상태를 유지한다.
   const fetchPosts = useCallback(async (ownerId: string) => {
@@ -157,36 +186,56 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const loadPosts = useCallback(
     async (ownerId: string) => {
-      const posts = await fetchPosts(ownerId);
-      setState((s) => ({ ...s, postsLoaded: true, ...(posts ? { posts } : {}) }));
+      const seq = ++fetchSeqRef.current;
+      const fetched = await fetchPosts(ownerId);
+      if (seq !== fetchSeqRef.current) return; // 더 새 요청이 있음 — 그 결과만 반영
+      if (!fetched) {
+        // 실패를 "빈 계정"으로 위장하지 않는다 — postsLoaded는 켜지 않고
+        // 오류만 알린 뒤, 다음 SIGNED_IN 재발화에서 처음부터 다시 시도한다.
+        loadedUserRef.current = null;
+        setState((s) => ({ ...s, postsError: POSTS_LOAD_ERROR }));
+        return;
+      }
+      const fetchedIds = new Set(fetched.map((p) => p.id));
+      // 서버가 확인해 준 생성/삭제는 기억에서 지운다.
+      recentlyCreatedRef.current.forEach((_p, id) => {
+        if (fetchedIds.has(id)) recentlyCreatedRef.current.delete(id);
+      });
+      recentlyDeletedRef.current.forEach((id) => {
+        if (!fetchedIds.has(id)) recentlyDeletedRef.current.delete(id);
+      });
+      const merged = [
+        ...[...recentlyCreatedRef.current.values()].filter(
+          (p) => !fetchedIds.has(p.id)
+        ),
+        ...fetched.filter((p) => !recentlyDeletedRef.current.has(p.id)),
+      ].map((p) => {
+        // 저장 대기 중인 로컬 편집이 서버 스냅샷에 덮이지 않게 겹쳐 적는다.
+        const pending = pendingPatchRef.current.get(p.id);
+        return pending ? { ...p, ...pending } : p;
+      });
+      setState((s) => ({
+        ...s,
+        postsLoaded: true,
+        postsError: null,
+        posts: merged,
+      }));
     },
     [fetchPosts]
   );
 
-  // 쓰기 실패 시: 실패 안내를 띄우고 서버를 진실의 원천으로 재동기화한다 (FR-008).
+  // 쓰기 실패 시: 서버를 진실의 원천으로 재동기화한 뒤 실패를 알린다 (FR-008).
+  // 안내는 재조회 후에 세팅해야 재조회 성공이 안내를 지워버리지 않는다.
   const resyncAfterError = useCallback(
     async (ownerId: string, message: string) => {
-      setState((s) => ({ ...s, postsError: message }));
       await loadPosts(ownerId);
+      setState((s) => ({ ...s, postsError: message }));
     },
     [loadPosts]
   );
 
-  // Load the local profile fallback (nickname/imagePath) once. Posts live in
-  // the page table only (FR-002) — no localStorage posts, no sample seeding.
   useEffect(() => {
-    const d = readLocalJson<{
-      nickname?: string | null;
-      introduction?: string | null;
-      imagePath?: string | null;
-    }>(KEY);
-    setState((s) => ({
-      ...s,
-      dataLoaded: true,
-      nickname: d?.nickname || null,
-      introduction: d?.introduction || null,
-      imagePath: d?.imagePath || null,
-    }));
+    setState((s) => ({ ...s, dataLoaded: true }));
   }, []);
 
   // Pull the 1:1 profile row and use its name as the nickname. The DB trigger
@@ -206,7 +255,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle();
       data = created;
     }
-    if (data) {
+    if (data && userIdRef.current === user.id) {
       const name = data.name ?? null;
       const imagePath = data.image_path ?? null;
       const introduction = data.introduction ?? null;
@@ -216,36 +265,77 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Mirror the Supabase session (INITIAL_SESSION covers the first load,
   // including the OAuth code exchange when returning from Google).
-  const loadedUserRef = useRef<string | null>(null);
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       const user = session?.user ?? null;
+      userIdRef.current = user?.id ?? null;
       if (!user) {
-        // 로그아웃 — 대기 중인 자동 저장은 더 이상 이 계정의 것이 아니므로 취소.
+        // 로그아웃 — 대기 중인 자동 저장은 더 이상 이 계정의 것이 아니므로
+        // 취소하고, 프로필 기기 캐시도 지워 다음 계정에게 새지 않게 한다.
         saveTimerRef.current.forEach((timer) => clearTimeout(timer));
         saveTimerRef.current.clear();
         pendingPatchRef.current.clear();
+        recentlyCreatedRef.current.clear();
+        recentlyDeletedRef.current.clear();
         loadedUserRef.current = null;
+        try {
+          localStorage.removeItem(KEY);
+        } catch {}
       }
+      const isNewLogin =
+        !!user &&
+        (event === "INITIAL_SESSION" || event === "SIGNED_IN") &&
+        loadedUserRef.current !== user.id;
+      // 캐시는 같은 계정의 것일 때만 프리필로 쓴다 (계정 간 유출 방지).
+      const cached = isNewLogin ? readLocalJson<ProfileCache>(KEY) : null;
+      const ownCache = user && cached?.userId === user.id ? cached : null;
       setState((s) => ({
         ...s,
         authLoaded: true,
         account: user ? toAccount(user) : null,
-        // 비로그인 상태에서는 어떤 글도 남기지 않는다 (FR-003).
-        ...(user ? {} : { postsLoaded: true, posts: [] }),
+        ...(user
+          ? {}
+          : {
+              // 비로그인 상태에서는 어떤 글도, 어떤 프로필도 남기지 않는다.
+              postsLoaded: true,
+              posts: [],
+              postsError: null,
+              nickname: null,
+              introduction: null,
+              imagePath: null,
+            }),
+        ...(isNewLogin
+          ? {
+              // 목록 로딩이 끝나기 전의 빈 목록은 확정 상태가 아니다.
+              postsLoaded: false,
+              posts: [],
+              postsError: null,
+              nickname: ownCache?.nickname ?? null,
+              introduction: ownCache?.introduction ?? null,
+              imagePath: ownCache?.imagePath ?? null,
+            }
+          : {}),
       }));
       // Supabase calls inside this callback can deadlock the auth lock,
-      // so defer the profile fetch to the next tick. supabase-js는 탭 포커스
-      // 복귀 등에서 같은 세션으로 SIGNED_IN을 재발화하므로, 같은 사용자면
-      // 전체 재조회를 건너뛴다.
-      if (
+      // so defer the profile/posts fetch to the next tick.
+      if (isNewLogin) {
+        loadedUserRef.current = user!.id;
+        lastLoadRef.current = Date.now();
+        setTimeout(() => {
+          void syncProfile(user!);
+          void loadPosts(user!.id);
+        }, 0);
+      } else if (
         user &&
-        (event === "INITIAL_SESSION" || event === "SIGNED_IN") &&
-        loadedUserRef.current !== user.id
+        event === "SIGNED_IN" &&
+        Date.now() - lastLoadRef.current > REFRESH_MIN_INTERVAL_MS
       ) {
-        loadedUserRef.current = user.id;
+        // 같은 사용자의 재발화(탭 포커스 복귀 등)는 스로틀을 걸어 프로필·목록을
+        // 재동기화한다 — 멀티탭/기기 간 유일한 최신화 경로. loadPosts가 낡은
+        // 응답을 버리고 pending 편집을 겹쳐 적으므로 입력 중에도 안전하다.
+        lastLoadRef.current = Date.now();
         setTimeout(() => {
           void syncProfile(user);
           void loadPosts(user.id);
@@ -255,15 +345,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [syncProfile, loadPosts]);
 
-  // Persist the local profile fallback on change (posts are never stored here).
+  // Persist the local profile fallback on change, keyed to its owner account
+  // (posts are never stored here).
   useEffect(() => {
-    if (!state.dataLoaded) return;
+    if (!state.dataLoaded || !state.account) return;
     writeLocalJson(KEY, {
+      userId: state.account.id,
       nickname: state.nickname,
       introduction: state.introduction,
       imagePath: state.imagePath,
     });
-  }, [state.dataLoaded, state.nickname, state.introduction, state.imagePath]);
+  }, [
+    state.dataLoaded,
+    state.account,
+    state.nickname,
+    state.introduction,
+    state.imagePath,
+  ]);
 
   const userId = state.account?.id;
 
@@ -278,14 +376,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     void supabase.auth.signOut();
   }, []);
 
-  // 글별 대기 patch·타이머 — 입력은 즉시 화면에, 저장은 디바운스로.
-  const pendingPatchRef = useRef(
-    new Map<string, Partial<Pick<Post, "title" | "content">>>()
-  );
-  const saveTimerRef = useRef(
-    new Map<string, ReturnType<typeof setTimeout>>()
-  );
-
   const updatePost = useCallback(
     (id: string, patch: Partial<Pick<Post, "title" | "content">>) => {
       setState((s) => ({
@@ -297,6 +387,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...pendingPatchRef.current.get(id),
         ...patch,
       });
+      // 아직 서버 응답이 확인 안 된 새 글이면 기억해 둔 사본도 갱신한다.
+      const rc = recentlyCreatedRef.current.get(id);
+      if (rc) recentlyCreatedRef.current.set(id, { ...rc, ...patch });
       const timer = saveTimerRef.current.get(id);
       if (timer) clearTimeout(timer);
       saveTimerRef.current.set(
@@ -307,22 +400,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           pendingPatchRef.current.delete(id);
           if (!pending) return;
           void (async () => {
-            const { error } = await supabase
+            const { data, error } = await supabase
               .from("page")
               .update(pending)
-              .eq("id", id);
-            if (error) {
-              void resyncAfterError(
-                userId,
-                "변경 내용을 저장하지 못했어요. 네트워크를 확인해 주세요."
-              );
+              .eq("id", id)
+              .select();
+            // 로그아웃/계정 전환 뒤 도착한 응답은 무시한다 — 이전 세션의
+            // 오류·재조회를 다음 세션에 흘리지 않는다.
+            if (userIdRef.current !== userId) return;
+            // error 없이 0행 매칭(다른 기기에서 삭제·RLS 필터)도 저장 실패다 —
+            // "자동 저장됨"이 거짓말이 되지 않게 재동기화한다.
+            if (error || (data ?? []).length === 0) {
+              void resyncAfterError(userId, POST_SAVE_ERROR);
+              return;
             }
+            // 성공한 다음 연산은 이전 실패 안내를 지운다 (contracts §posts-store).
+            setState((s) => (s.postsError ? { ...s, postsError: null } : s));
           })();
         }, SAVE_DEBOUNCE_MS)
       );
     },
     [userId, resyncAfterError]
   );
+
+  // 탭 이탈(숨김/언로드) 시 대기 중인 자동 저장을 즉시 전송한다 — 디바운스
+  // 창에서 탭을 닫아도 마지막 입력이 유실되지 않게 하는 best-effort 플러시.
+  const flushPendingSaves = useCallback(() => {
+    if (!userIdRef.current) return;
+    saveTimerRef.current.forEach((timer) => clearTimeout(timer));
+    saveTimerRef.current.clear();
+    pendingPatchRef.current.forEach((pending, id) => {
+      void supabase.from("page").update(pending).eq("id", id).select();
+    });
+    pendingPatchRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flushPendingSaves();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flushPendingSaves);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flushPendingSaves);
+      // 제공자 해제 시에도 플러시 — 테스트/HMR에서 타이머가 살아남지 않게.
+      flushPendingSaves();
+    };
+  }, [flushPendingSaves]);
 
   const toggleFavorite = useCallback(
     (id: string) => {
@@ -346,15 +471,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const deletePost = useCallback(
     (id: string) => {
       if (!userId) return;
+      recentlyDeletedRef.current.add(id);
+      recentlyCreatedRef.current.delete(id);
       setState((s) => ({ ...s, posts: s.posts.filter((p) => p.id !== id) }));
       void (async () => {
         const { error } = await supabase.from("page").delete().eq("id", id);
+        if (userIdRef.current !== userId) return;
         if (error) {
+          recentlyDeletedRef.current.delete(id);
           void resyncAfterError(
             userId,
             "글을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요."
           );
+          return;
         }
+        setState((s) => (s.postsError ? { ...s, postsError: null } : s));
       })();
     },
     [userId, resyncAfterError]
@@ -384,13 +515,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
       const post = rowToPost(data as PageRow, readFavorites(userId));
+      // in-flight였던 조회 스냅샷이 이 글을 모른 채 도착해도 지워지지 않게.
+      recentlyCreatedRef.current.set(post.id, post);
       setState((s) => ({ ...s, posts: [post, ...s.posts], postsError: null }));
       return post;
     },
     [userId]
   );
-  // Update local state immediately, then persist nickname + introduction to
-  // the profile table in a single update so both always save together.
+
+  // Persist nickname + introduction to the profile table in a single update so
+  // both always save together. 상태는 DB 반영이 확인된 뒤에만 바꾼다 — 실패 시
+  // 화면 전역(displayName 등)과 기기 캐시에 저장 안 된 값이 남지 않게.
   // Resolves false when the Supabase update fails.
   const saveProfile = useCallback(
     async (fields: { name: string; introduction: string }) => {
@@ -399,13 +534,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // line breaks and inner spacing survive round-trips.
       const introduction =
         fields.introduction.trim() === "" ? null : fields.introduction;
-      setState((s) => ({ ...s, nickname: name, introduction }));
-      if (!userId) return true;
+      if (!userId) {
+        setState((s) => ({ ...s, nickname: name, introduction }));
+        return true;
+      }
       const { error } = await supabase
         .from("profile")
         .update({ name, introduction })
         .eq("user_id", userId);
-      return !error;
+      if (error || userIdRef.current !== userId) return !error;
+      setState((s) => ({ ...s, nickname: name, introduction }));
+      return true;
     },
     [userId]
   );

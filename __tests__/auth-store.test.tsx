@@ -149,7 +149,10 @@ test("프로필 저장 시 별명과 자기소개가 한 번의 업데이트로 
       "user-1"
     )
   );
-  expect(screen.getByTestId("display-name").textContent).toBe("새 별명");
+  // 저장 확정 후 상태 반영(비관적 커밋) — 실패 시 화면에 미저장 값이 남지 않는다.
+  await waitFor(() =>
+    expect(screen.getByTestId("display-name").textContent).toBe("새 별명")
+  );
 });
 
 test("공백·줄바꿈만 있는 자기소개는 null로 저장된다", async () => {
@@ -211,10 +214,18 @@ test("동기화된 introduction이 localStorage에 함께 저장된다", async (
   });
 });
 
-test("localStorage에 저장된 introduction이 복원된다", async () => {
+test("같은 계정의 localStorage 캐시가 로그인 직후 introduction으로 프리필된다", async () => {
+  // 캐시는 소유 계정(userId)이 일치할 때만 쓰인다 — 계정 간 유출 방지.
+  state.session = googleSession;
+  state.profileRow = {
+    name: "캐시별명",
+    image_path: null,
+    introduction: "캐시된 소개",
+  };
   localStorage.setItem(
     "mini-notion-v1",
     JSON.stringify({
+      userId: "user-1",
       nickname: "캐시별명",
       imagePath: null,
       introduction: "캐시된 소개",
@@ -225,7 +236,8 @@ test("localStorage에 저장된 introduction이 복원된다", async () => {
       <Probe />
     </AppProvider>
   );
-  await waitFor(() =>
-    expect(screen.getByTestId("introduction").textContent).toBe("캐시된 소개")
-  );
+  // DB 조회(다음 틱)가 끝나기 전에도 캐시가 즉시 보인다.
+  expect(screen.getByTestId("introduction").textContent).toBe("캐시된 소개");
+  await waitFor(() => expect(spies.profileSelect).toHaveBeenCalled());
+  expect(screen.getByTestId("introduction").textContent).toBe("캐시된 소개");
 });
