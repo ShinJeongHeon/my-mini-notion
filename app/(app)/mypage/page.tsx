@@ -11,6 +11,7 @@ export default function MyPage() {
   const app = useApp();
   const [nickDraft, setNickDraft] = useState("");
   const [saved, setSaved] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fill the draft once profile data is loaded.
@@ -36,14 +37,18 @@ export default function MyPage() {
     savedTimer.current = setTimeout(() => setSaved(false), 1800);
   };
 
-  const onAvatarPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload to Supabase Storage; reset the input so picking the same file
+  // again still fires change. Re-entry is blocked while an upload is pending.
+  const onAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") app.setAvatar(reader.result);
-    };
-    reader.readAsDataURL(file);
+    e.target.value = "";
+    if (!file || uploading) return;
+    setUploading(true);
+    const ok = await app.saveAvatar(file);
+    setUploading(false);
+    if (!ok) {
+      window.alert("사진 업로드에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
   };
 
   return (
@@ -67,6 +72,7 @@ export default function MyPage() {
               <input
                 type="file"
                 accept="image/*"
+                disabled={uploading}
                 onChange={onAvatarPick}
                 style={{ display: "none" }}
               />

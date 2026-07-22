@@ -20,6 +20,14 @@ export type Post = {
 
 const KEY = "mini-notion-v1";
 const OWNER_NAME = "김민수";
+const PROFILE_IMAGE_BUCKET = "profile-image";
+
+// Download URL = env base(스토리지 주소~버킷명) + "/" + image_path(버킷명 이후).
+function profileImageUrl(path: string | null): string | null {
+  const base = process.env.NEXT_PUBLIC_PROFILE_IMAGE_BASE_URL;
+  if (!path || !base) return null;
+  return `${base.replace(/\/+$/, "")}/${path}`;
+}
 
 // Profile fields surfaced from the signed-in Google account.
 type Account = {
@@ -100,7 +108,7 @@ type AppState = {
   authLoaded: boolean;
   posts: Post[];
   nickname: string | null;
-  avatar: string | null;
+  imagePath: string | null;
   account: Account | null;
 };
 
@@ -119,7 +127,7 @@ type AppStore = {
   toggleFavorite(id: string): void;
   deletePost(id: string): void;
   saveNickname(nick: string): Promise<boolean>;
-  setAvatar(dataUrl: string): void;
+  saveAvatar(file: File): Promise<boolean>;
 };
 
 const AppContext = createContext<AppStore | null>(null);
@@ -130,7 +138,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     authLoaded: false,
     posts: [],
     nickname: null,
-    avatar: null,
+    imagePath: null,
     account: null,
   });
 
@@ -138,21 +146,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let posts: Post[] = [];
     let nickname: string | null = null;
-    let avatar: string | null = null;
+    let imagePath: string | null = null;
     try {
       const raw = localStorage.getItem(KEY);
       if (raw) {
         const d = JSON.parse(raw);
         posts = Array.isArray(d.posts) ? d.posts : [];
         nickname = d.nickname || null;
-        avatar = d.avatar || null;
+        imagePath = d.imagePath || null;
       } else {
         posts = seed();
       }
     } catch {
       posts = seed();
     }
-    setState((s) => ({ ...s, dataLoaded: true, posts, nickname, avatar }));
+    setState((s) => ({ ...s, dataLoaded: true, posts, nickname, imagePath }));
   }, []);
 
   // Pull the 1:1 profile row and use its name as the nickname. The DB trigger
@@ -161,20 +169,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const syncProfile = useCallback(async (user: User) => {
     let { data } = await supabase
       .from("profile")
-      .select("name")
+      .select("name, image_path")
       .eq("user_id", user.id)
       .maybeSingle();
     if (!data) {
       const { data: created } = await supabase
         .from("profile")
         .insert({ user_id: user.id, name: toAccount(user).name })
-        .select("name")
+        .select("name, image_path")
         .maybeSingle();
       data = created;
     }
     if (data) {
       const name = data.name ?? null;
-      setState((s) => ({ ...s, nickname: name }));
+      const imagePath = data.image_path ?? null;
+      setState((s) => ({ ...s, nickname: name, imagePath }));
     }
   }, []);
 
@@ -208,7 +217,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         JSON.stringify({
           posts: state.posts,
           nickname: state.nickname,
-          avatar: state.avatar,
+          imagePath: state.imagePath,
         })
       );
     } catch {}
@@ -277,16 +286,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [userId]
   );
 
-  const setAvatar = useCallback((dataUrl: string) => {
-    setState((s) => ({ ...s, avatar: dataUrl }));
-  }, []);
+  // Upload the picked file to the profile-image bucket under a fresh UUID v4
+  // name, persist the bucket-relative path in profile.image_path, then
+  // best-effort remove the previous file. Resolves false on any failure.
+  const imagePath = state.imagePath;
+  const saveAvatar = useCallback(
+    async (file: File) => {
+      if (!userId) return false;
+      const ext = (file.name.match(/\.(\w+)$/)?.[1] ?? "png").toLowerCase();
+      const path = `${crypto.randomUUID()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from(PROFILE_IMAGE_BUCKET)
+        .upload(path, file, { contentType: file.type || undefined });
+      if (uploadError) return false;
+      const { error } = await supabase
+        .from("profile")
+        .update({ image_path: path })
+        .eq("user_id", userId);
+      if (error) {
+        void supabase.storage.from(PROFILE_IMAGE_BUCKET).remove([path]);
+        return false;
+      }
+      setState((s) => ({ ...s, imagePath: path }));
+      if (imagePath) {
+        void supabase.storage.from(PROFILE_IMAGE_BUCKET).remove([imagePath]);
+      }
+      return true;
+    },
+    [userId, imagePath]
+  );
 
   const store: AppStore = {
     loaded: state.dataLoaded && state.authLoaded,
     loggedIn: !!state.account,
     posts: state.posts,
     nickname: state.nickname,
-    avatar: state.avatar ?? state.account?.avatarUrl ?? null,
+    avatar: profileImageUrl(state.imagePath) ?? state.account?.avatarUrl ?? null,
     displayName: state.nickname || state.account?.name || OWNER_NAME,
     email: state.account?.email ?? "",
     login,
@@ -296,7 +331,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     toggleFavorite,
     deletePost,
     saveNickname,
-    setAvatar,
+    saveAvatar,
   };
 
   return <AppContext.Provider value={store}>{children}</AppContext.Provider>;
