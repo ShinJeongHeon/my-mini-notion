@@ -108,6 +108,7 @@ type AppState = {
   authLoaded: boolean;
   posts: Post[];
   nickname: string | null;
+  introduction: string | null;
   imagePath: string | null;
   account: Account | null;
 };
@@ -117,6 +118,7 @@ type AppStore = {
   loggedIn: boolean;
   posts: Post[];
   nickname: string | null;
+  introduction: string | null;
   avatar: string | null;
   displayName: string;
   email: string;
@@ -138,6 +140,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     authLoaded: false,
     posts: [],
     nickname: null,
+    introduction: null,
     imagePath: null,
     account: null,
   });
@@ -146,6 +149,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let posts: Post[] = [];
     let nickname: string | null = null;
+    let introduction: string | null = null;
     let imagePath: string | null = null;
     try {
       const raw = localStorage.getItem(KEY);
@@ -153,6 +157,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const d = JSON.parse(raw);
         posts = Array.isArray(d.posts) ? d.posts : [];
         nickname = d.nickname || null;
+        introduction = d.introduction || null;
         imagePath = d.imagePath || null;
       } else {
         posts = seed();
@@ -160,7 +165,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {
       posts = seed();
     }
-    setState((s) => ({ ...s, dataLoaded: true, posts, nickname, imagePath }));
+    setState((s) => ({
+      ...s,
+      dataLoaded: true,
+      posts,
+      nickname,
+      introduction,
+      imagePath,
+    }));
   }, []);
 
   // Pull the 1:1 profile row and use its name as the nickname. The DB trigger
@@ -169,21 +181,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const syncProfile = useCallback(async (user: User) => {
     let { data } = await supabase
       .from("profile")
-      .select("name, image_path")
+      .select("name, image_path, introduction")
       .eq("user_id", user.id)
       .maybeSingle();
     if (!data) {
       const { data: created } = await supabase
         .from("profile")
         .insert({ user_id: user.id, name: toAccount(user).name })
-        .select("name, image_path")
+        .select("name, image_path, introduction")
         .maybeSingle();
       data = created;
     }
     if (data) {
       const name = data.name ?? null;
       const imagePath = data.image_path ?? null;
-      setState((s) => ({ ...s, nickname: name, imagePath }));
+      const introduction = data.introduction ?? null;
+      setState((s) => ({ ...s, nickname: name, imagePath, introduction }));
     }
   }, []);
 
@@ -217,6 +230,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         JSON.stringify({
           posts: state.posts,
           nickname: state.nickname,
+          introduction: state.introduction,
           imagePath: state.imagePath,
         })
       );
@@ -277,7 +291,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     async (fields: { name: string; introduction: string }) => {
       const name = (fields.name || "").trim() || null;
       const introduction = fields.introduction;
-      setState((s) => ({ ...s, nickname: name }));
+      setState((s) => ({ ...s, nickname: name, introduction }));
       if (!userId) return true;
       const { error } = await supabase
         .from("profile")
@@ -323,6 +337,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loggedIn: !!state.account,
     posts: state.posts,
     nickname: state.nickname,
+    introduction: state.introduction,
     avatar: profileImageUrl(state.imagePath) ?? state.account?.avatarUrl ?? null,
     displayName: state.nickname || state.account?.name || OWNER_NAME,
     email: state.account?.email ?? "",

@@ -14,12 +14,23 @@ export default function MyPage() {
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const introTouched = useRef(false);
 
   // Fill the draft once profile data is loaded.
   useEffect(() => {
     if (app.loaded) setNickDraft(app.displayName);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app.loaded]);
+
+  // Sync the introduction draft from the store while the field is untouched.
+  // `loaded` flips before syncProfile's DB fetch lands, so a saved
+  // introduction arriving late must still fill a pristine field — but never
+  // overwrite anything the user has started typing.
+  useEffect(() => {
+    if (app.loaded && !introTouched.current) {
+      setIntroDraft(app.introduction ?? "");
+    }
+  }, [app.loaded, app.introduction]);
 
   useEffect(() => {
     return () => {
@@ -101,7 +112,10 @@ export default function MyPage() {
             id="introduction"
             className="field-textarea"
             value={introDraft}
-            onChange={(e) => setIntroDraft(e.target.value)}
+            onChange={(e) => {
+              introTouched.current = true;
+              setIntroDraft(e.target.value);
+            }}
             placeholder="자기소개를 입력하세요"
             maxLength={500}
           />

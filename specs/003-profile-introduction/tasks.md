@@ -79,13 +79,13 @@ textarea에 표시. (quickstart.md 표 #4–5)
 
 ### Tests for User Story 2 (MANDATORY — TDD per constitution) ⚠️
 
-- [ ] T009 [P] [US2] RED: `__tests__/auth-store.test.tsx` — profileRow 목을 실제 select 형상 전체 `{ name, image_path, introduction }`로 확장(부분 목 금지, 헌법 II · contracts §4-1)하고 테스트 추가: (1) profile 행에 introduction이 있으면 `app.introduction`으로 노출된다 (2) localStorage `mini-notion-v1` 페이로드에 introduction이 포함되어 저장·복원된다(data-model.md §2). 실패 확인
-- [ ] T010 [P] [US2] RED: `__tests__/mypage-introduction.test.tsx` — 저장된 자기소개가 있는 계정(목 profileRow에 introduction 설정)으로 렌더 → `waitFor`로 textarea 값이 저장값으로 채워짐을 단언(로딩 완료 후 채움 = 빈 값이 저장값을 덮지 않음, US2-3). 실패 확인
+- [X] T009 [P] [US2] RED: `__tests__/auth-store.test.tsx` — profileRow 목을 실제 select 형상 전체 `{ name, image_path, introduction }`로 확장(부분 목 금지, 헌법 II · contracts §4-1)하고 테스트 추가: (1) profile 행에 introduction이 있으면 `app.introduction`으로 노출된다 (2) localStorage `mini-notion-v1` 페이로드에 introduction이 포함되어 저장·복원된다(data-model.md §2). 실패 확인
+- [X] T010 [P] [US2] RED: `__tests__/mypage-introduction.test.tsx` — 저장된 자기소개가 있는 계정(목 profileRow에 introduction 설정)으로 렌더 → `waitFor`로 textarea 값이 저장값으로 채워짐을 단언(로딩 완료 후 채움 = 빈 값이 저장값을 덮지 않음, US2-3). 실패 확인
 
 ### Implementation for User Story 2
 
-- [ ] T011 [US2] GREEN: `lib/store.tsx` — `AppState.introduction: string | null` 추가, syncProfile select를 `"name, image_path, introduction"`으로 확장(insert 폴백의 select 동일, introduction은 insert 값에 넣지 않음 — contracts §2.1), setState 반영, localStorage 저장·복원에 introduction 포함, `AppStore.introduction` 노출. T009 green + 기존 테스트 회귀 0 확인 — T010은 T012에서 green이 되는 것이 정상
-- [ ] T012 [US2] GREEN: `app/(app)/mypage/page.tsx` — draft 동기화 이펙트 추가: `useEffect([app.loaded, app.introduction])`에서 사용자가 아직 자기소개를 입력하지 않은 동안(pristine ref)만 `setIntroDraft(app.introduction ?? "")`. `loaded`가 syncProfile 완료 전에 true가 되는 경우(캐시 없는 새 기기)를 커버하고, 입력 시작 후에는 덮어쓰지 않는다(contracts §3). T010 통과 + 전체 green 확인 (T011에 의존)
+- [X] T011 [US2] GREEN: `lib/store.tsx` — `AppState.introduction: string | null` 추가, syncProfile select를 `"name, image_path, introduction"`으로 확장(insert 폴백의 select 동일, introduction은 insert 값에 넣지 않음 — contracts §2.1), setState 반영, localStorage 저장·복원에 introduction 포함, `AppStore.introduction` 노출. T009 green + 기존 테스트 회귀 0 확인 — T010은 T012에서 green이 되는 것이 정상
+- [X] T012 [US2] GREEN: `app/(app)/mypage/page.tsx` — draft 동기화 이펙트 추가: `useEffect([app.loaded, app.introduction])`에서 사용자가 아직 자기소개를 입력하지 않은 동안(pristine ref)만 `setIntroDraft(app.introduction ?? "")`. `loaded`가 syncProfile 완료 전에 true가 되는 경우(캐시 없는 새 기기)를 커버하고, 입력 시작 후에는 덮어쓰지 않는다(contracts §3). T010 통과 + 전체 green 확인 (T011에 의존)
 
 **Checkpoint**: US1+US2 — 등록·조회 왕복이 완전 동작
 
