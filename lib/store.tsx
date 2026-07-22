@@ -108,6 +108,7 @@ type AppState = {
   posts: Post[];
   postsError: string | null;
   nickname: string | null;
+  introduction: string | null;
   imagePath: string | null;
   account: Account | null;
 };
@@ -118,6 +119,7 @@ type AppStore = {
   posts: Post[];
   postsError: string | null;
   nickname: string | null;
+  introduction: string | null;
   avatar: string | null;
   displayName: string;
   email: string;
@@ -127,7 +129,7 @@ type AppStore = {
   updatePost(id: string, patch: Partial<Pick<Post, "title" | "content">>): void;
   toggleFavorite(id: string): void;
   deletePost(id: string): void;
-  saveNickname(nick: string): Promise<boolean>;
+  saveProfile(fields: { name: string; introduction: string }): Promise<boolean>;
   saveAvatar(file: File): Promise<boolean>;
 };
 
@@ -141,6 +143,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     posts: [],
     postsError: null,
     nickname: null,
+    introduction: null,
     imagePath: null,
     account: null,
   });
@@ -179,16 +182,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // the page table only (FR-002) — no localStorage posts, no sample seeding.
   useEffect(() => {
     let nickname: string | null = null;
+    let introduction: string | null = null;
     let imagePath: string | null = null;
     try {
       const raw = localStorage.getItem(KEY);
       if (raw) {
         const d = JSON.parse(raw);
         nickname = d.nickname || null;
+        introduction = d.introduction || null;
         imagePath = d.imagePath || null;
       }
     } catch {}
-    setState((s) => ({ ...s, dataLoaded: true, nickname, imagePath }));
+    setState((s) => ({ ...s, dataLoaded: true, nickname, introduction, imagePath }));
   }, []);
 
   // Pull the 1:1 profile row and use its name as the nickname. The DB trigger
@@ -197,21 +202,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const syncProfile = useCallback(async (user: User) => {
     let { data } = await supabase
       .from("profile")
-      .select("name, image_path")
+      .select("name, image_path, introduction")
       .eq("user_id", user.id)
       .maybeSingle();
     if (!data) {
       const { data: created } = await supabase
         .from("profile")
         .insert({ user_id: user.id, name: toAccount(user).name })
-        .select("name, image_path")
+        .select("name, image_path, introduction")
         .maybeSingle();
       data = created;
     }
     if (data) {
       const name = data.name ?? null;
       const imagePath = data.image_path ?? null;
-      setState((s) => ({ ...s, nickname: name, imagePath }));
+      const introduction = data.introduction ?? null;
+      setState((s) => ({ ...s, nickname: name, imagePath, introduction }));
     }
   }, []);
 
@@ -255,6 +261,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         KEY,
         JSON.stringify({
           nickname: state.nickname,
+          introduction: state.introduction,
           imagePath: state.imagePath,
         })
       );
@@ -386,16 +393,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
     [userId]
   );
-  // Update local state immediately, then persist to the profile table.
+  // Update local state immediately, then persist nickname + introduction to
+  // the profile table in a single update so both always save together.
   // Resolves false when the Supabase update fails.
-  const saveNickname = useCallback(
-    async (nick: string) => {
-      const name = (nick || "").trim() || null;
-      setState((s) => ({ ...s, nickname: name }));
+  const saveProfile = useCallback(
+    async (fields: { name: string; introduction: string }) => {
+      const name = (fields.name || "").trim() || null;
+      // Whitespace-only means "cleared"; real content is stored verbatim so
+      // line breaks and inner spacing survive round-trips.
+      const introduction =
+        fields.introduction.trim() === "" ? null : fields.introduction;
+      setState((s) => ({ ...s, nickname: name, introduction }));
       if (!userId) return true;
       const { error } = await supabase
         .from("profile")
-        .update({ name })
+        .update({ name, introduction })
         .eq("user_id", userId);
       return !error;
     },
@@ -438,6 +450,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     posts: state.posts,
     postsError: state.postsError,
     nickname: state.nickname,
+    introduction: state.introduction,
     avatar: profileImageUrl(state.imagePath) ?? state.account?.avatarUrl ?? null,
     displayName: state.nickname || state.account?.name || OWNER_NAME,
     email: state.account?.email ?? "",
@@ -447,7 +460,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updatePost,
     toggleFavorite,
     deletePost,
-    saveNickname,
+    saveProfile,
     saveAvatar,
   };
 

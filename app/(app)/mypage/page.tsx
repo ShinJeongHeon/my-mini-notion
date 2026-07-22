@@ -10,9 +10,11 @@ import { Button } from "@/components/ui/Button";
 export default function MyPage() {
   const app = useApp();
   const [nickDraft, setNickDraft] = useState("");
+  const [introDraft, setIntroDraft] = useState("");
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const introTouched = useRef(false);
 
   // Fill the draft once profile data is loaded.
   useEffect(() => {
@@ -20,14 +22,27 @@ export default function MyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app.loaded]);
 
+  // Sync the introduction draft from the store while the field is untouched.
+  // `loaded` flips before syncProfile's DB fetch lands, so a saved
+  // introduction arriving late must still fill a pristine field — but never
+  // overwrite anything the user has started typing.
+  useEffect(() => {
+    if (app.loaded && !introTouched.current) {
+      setIntroDraft(app.introduction ?? "");
+    }
+  }, [app.loaded, app.introduction]);
+
   useEffect(() => {
     return () => {
       if (savedTimer.current) clearTimeout(savedTimer.current);
     };
   }, []);
 
-  const saveProfile = async () => {
-    const ok = await app.saveNickname(nickDraft);
+  const onSave = async () => {
+    const ok = await app.saveProfile({
+      name: nickDraft,
+      introduction: introDraft,
+    });
     if (!ok) {
       window.alert("저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
       return;
@@ -91,6 +106,21 @@ export default function MyPage() {
           />
         </div>
 
+        <div className="mypage-field">
+          <label htmlFor="introduction">자기소개</label>
+          <textarea
+            id="introduction"
+            className="field-textarea"
+            value={introDraft}
+            onChange={(e) => {
+              introTouched.current = true;
+              setIntroDraft(e.target.value);
+            }}
+            placeholder="자기소개를 입력하세요"
+            maxLength={500}
+          />
+        </div>
+
         <div className="mypage-field mypage-field--email">
           <label>이메일</label>
           <div className="field-readonly">
@@ -101,7 +131,7 @@ export default function MyPage() {
         </div>
 
         <div className="mypage-card__footer">
-          <Button variant="primary" onClick={saveProfile}>
+          <Button variant="primary" onClick={onSave}>
             변경사항 저장
           </Button>
           {saved && (
